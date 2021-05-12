@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <string>
 
-class CScriptFile : public CClientEntity
+class CScriptFile final : public CClientEntity
 {
     DECLARE_CLASS(CScriptFile, CClientEntity)
 public:
@@ -55,7 +55,7 @@ public:
     long SetPointer(unsigned long ulPosition);
 
     void Flush();
-    long Read(unsigned long ulSize, CBuffer& outBuffer);
+    long Read(unsigned long ulSize, SString& outBuffer);
     long Write(unsigned long ulSize, const char* pData);
 
     // Debug info for garbage collected files

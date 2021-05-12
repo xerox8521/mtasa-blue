@@ -31,6 +31,7 @@ public:
     const SString& GetTitle();
     SString        GetURL();
     void           SetRenderingPaused(bool bPaused);
+    const bool     GetRenderingPaused() const { return m_pWebView->GetRenderingPaused(); }
     void           Focus();
 
     bool ExecuteJavascript(const SString& strJavascriptCode);
@@ -80,7 +81,7 @@ public:
     void Events_OnTooltip(const SString& strTooltip) override;
     void Events_OnInputFocusChanged(bool bGainedFocus) override;
     bool Events_OnResourcePathCheck(SString& strURL) override;
-    bool Events_OnResourceFileCheck(const SString& strURL) override;
+    bool Events_OnResourceFileCheck(const SString& strURL, CBuffer& outFileData) override;
     void Events_OnResourceBlocked(const SString& strURL, const SString& strDomain, unsigned char reason) override;
     void Events_OnAjaxRequest(CAjaxResourceHandlerInterface* pHandler, const SString& strURL) override;
 

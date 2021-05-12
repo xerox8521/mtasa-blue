@@ -1,5 +1,4 @@
 #ifdef WIN32
-#pragma message("Compiling precompiled header.\n")
 
 #include <winsock2.h>
 #include <windows.h>
@@ -42,7 +41,7 @@ struct SAclRequest;
 #include "CMatrix.h"
 #include "net/Packets.h"
 #include "Enums.h"
-#include <bochs_internal/crc32.h>
+#include <bochs_internal/bochs_crc32.h>
 #include "CChecksum.h"
 #include "CIdArray.h"
 #include "pcrecpp.h"
@@ -111,6 +110,11 @@ struct SAclRequest;
 #include "packets/CVehicleTrailerPacket.h"
 #include "packets/CVoiceDataPacket.h"
 #include "packets/CVoiceEndPacket.h"
+#include "packets/CServerInfoSyncPacket.h"
+#include "packets/CDiscordJoinPacket.h"
+
+// has to be included early to prevent "unknown type name 'CRemoteCall'" in CLuaFunctionParser.h
+#include "CRemoteCalls.h"
 
 // Lua function definitions
 #include "luadefs/CLuaElementDefs.h"
@@ -122,11 +126,13 @@ struct SAclRequest;
 #include "luadefs/CLuaCameraDefs.h"
 #include "luadefs/CLuaClassDefs.h"
 #include "luadefs/CLuaColShapeDefs.h"
+#include "luadefs/CLuaCompatibilityDefs.h"
 #include "luadefs/CLuaDatabaseDefs.h"
 #include "luadefs/CLuaDefs.h"
 #include "luadefs/CLuaHTTPDefs.h"
 #include "luadefs/CLuaHandlingDefs.h"
 #include "luadefs/CLuaMarkerDefs.h"
+#include "luadefs/CLuaNetworkDefs.h"
 #include "luadefs/CLuaObjectDefs.h"
 #include "luadefs/CLuaPedDefs.h"
 #include "luadefs/CLuaPickupDefs.h"
@@ -243,7 +249,6 @@ struct SAclRequest;
 #include "CPlayerCamera.h"
 #include "CPlayerClothes.h"
 #include "CPlayerManager.h"
-#include "CPlayerStats.h"
 #include "CPlayerTasks.h"
 #include "CPlayerTextManager.h"
 #include "CRPCFunctions.h"
@@ -252,7 +257,6 @@ struct SAclRequest;
 #include "CRegisteredCommands.h"
 #include "CRegistryManager.h"
 #include "CRegistry.h"
-#include "CRemoteCalls.h"
 #include "CResource.h"
 #include "CResourceChecker.h"
 #include "CResourceClientConfigItem.h"
@@ -273,6 +277,8 @@ struct SAclRequest;
 #include "CTextDisplay.h"
 #include "CTextItem.h"
 #include "CTickRateSettings.h"
+#include "CTrainTrack.h"
+#include "CTrainTrackManager.h"
 #include "CUnoccupiedVehicleSync.h"
 #include "CVehicle.h"
 #include "CVehicleColorManager.h"
@@ -303,7 +309,7 @@ struct SAclRequest;
 #include "CServer.h"
 #include "Config.h"
 #define SHOW_SELF_COMPILE_WARNING
-#include "../../version.h"
+#include "version.h"
 
 extern CNetServer* g_pRealNetServer;
 extern CGame*      g_pGame;

@@ -1,6 +1,6 @@
 /*****************************************************************************
  *
- *  PROJECT:     Multi Theft Auto v1.0
+ *  PROJECT:     Multi Theft Auto
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        mods/deathmatch/logic/lua/CLuaMain.cpp
  *  PURPOSE:     Lua virtual machine container class
@@ -58,7 +58,7 @@ CLuaMain::CLuaMain(CLuaManager* pLuaManager, CObjectManager* pObjectManager, CPl
 CLuaMain::~CLuaMain()
 {
     // remove all current remote calls originating from this VM
-    g_pGame->GetRemoteCalls()->Remove(this);
+    g_pGame->GetRemoteCalls()->OnLuaMainDestroy(this);
     g_pGame->GetLuaCallbackManager()->OnLuaMainDestroy(this);
     g_pGame->GetLatentTransferManager()->OnLuaMainDestroy(this);
     g_pGame->GetDebugHookManager()->OnLuaMainDestroy(this);
@@ -72,10 +72,9 @@ CLuaMain::~CLuaMain()
     delete m_pLuaTimerManager;
 
     // Eventually delete the XML files the LUA script didn't
-    list<CXMLFile*>::iterator iterXML = m_XMLFiles.begin();
-    for (; iterXML != m_XMLFiles.end(); ++iterXML)
+    for (auto& xmlFile : m_XMLFiles)
     {
-        delete *iterXML;
+        delete xmlFile;
     }
 
     // Eventually delete the text displays the LUA script didn't
@@ -168,12 +167,12 @@ void CLuaMain::InitClasses(lua_State* luaVM)
     CLuaShared::AddClasses(luaVM);
 }
 
-void CLuaMain::InitVM()
+void CLuaMain::Initialize()
 {
     assert(!m_luaVM);
 
     // Create a new VM
-    m_luaVM = lua_open();
+    m_luaVM = lua_open(this);
     m_pLuaManager->OnLuaMainOpenVM(this, m_luaVM);
 
     // Set the instruction count hook
@@ -208,11 +207,18 @@ void CLuaMain::InitVM()
 
     lua_pushelement(m_luaVM, m_pResource->GetResourceRootElement());
     lua_setglobal(m_luaVM, "resourceRoot");
+}
 
-    // Load pre-loaded lua scripts
+void CLuaMain::LoadEmbeddedScripts()
+{
     LoadScript(EmbeddedLuaCode::exports);
     LoadScript(EmbeddedLuaCode::coroutine_debug);
     LoadScript(EmbeddedLuaCode::inspect);
+}
+
+void CLuaMain::RegisterModuleFunctions()
+{
+    m_pLuaManager->GetLuaModuleManager()->RegisterFunctions(m_luaVM);
 }
 
 // Special function(s) that are only visible to HTMLD scripts
@@ -416,44 +422,51 @@ CXMLFile* CLuaMain::CreateXML(const char* szFilename, bool bUseIDs, bool bReadOn
     return pFile;
 }
 
-void CLuaMain::DestroyXML(CXMLFile* pFile)
+CXMLNode* CLuaMain::ParseString(const char* strXmlContent)
 {
-    m_XMLFiles.remove(pFile);
-    delete pFile;
+    auto xmlStringNode = g_pServerInterface->GetXML()->ParseString(strXmlContent);
+    if (!xmlStringNode)
+        return nullptr;
+
+    auto node = xmlStringNode->node;
+    m_XMLStringNodes.emplace(std::move(xmlStringNode));
+    return node;
 }
 
-void CLuaMain::DestroyXML(CXMLNode* pRootNode)
+bool CLuaMain::DestroyXML(CXMLFile* pFile)
 {
-    list<CXMLFile*>::iterator iter;
-    for (iter = m_XMLFiles.begin(); iter != m_XMLFiles.end(); ++iter)
+    if (m_XMLFiles.empty())
+        return false;
+    m_XMLFiles.remove(pFile);
+    delete pFile;
+    return true;
+}
+
+bool CLuaMain::DestroyXML(CXMLNode* pRootNode)
+{
+    if (m_XMLFiles.empty())
+        return false;
+    for (CXMLFile* pFile : m_XMLFiles)
     {
-        CXMLFile* file = (*iter);
-        if (file)
+        if (pFile)
         {
-            if (file->GetRootNode() == pRootNode)
+            if (pFile->GetRootNode() == pRootNode)
             {
-                m_XMLFiles.erase(iter);
-                delete file;
+                m_XMLFiles.remove(pFile);
+                delete pFile;
                 break;
             }
         }
     }
+    return true;
 }
 
 bool CLuaMain::SaveXML(CXMLNode* pRootNode)
 {
-    list<CXMLFile*>::iterator iter;
-    for (iter = m_XMLFiles.begin(); iter != m_XMLFiles.end(); ++iter)
-    {
-        CXMLFile* file = (*iter);
-        if (file)
-        {
-            if (file->GetRootNode() == pRootNode)
-            {
-                return file->Write();
-            }
-        }
-    }
+    for (CXMLFile* pFile : m_XMLFiles)
+        if (pFile)
+            if (pFile->GetRootNode() == pRootNode)
+                return pFile->Write();
     if (m_pResource)
     {
         list<CResourceFile*>::iterator iter = m_pResource->IterBegin();
@@ -467,9 +480,7 @@ bool CLuaMain::SaveXML(CXMLNode* pRootNode)
                 {
                     CXMLFile* pFile = pConfigItem->GetFile();
                     if (pFile)
-                    {
                         return pFile->Write();
-                    }
                     return false;
                 }
             }

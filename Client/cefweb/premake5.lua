@@ -11,6 +11,7 @@ project "Client Webbrowser"
 
 	filter {}
 		includedirs {
+			"../../Shared/sdk",
 			".",
 			"../sdk",
 			"../../vendor/cef3",
@@ -44,9 +45,6 @@ project "Client Webbrowser"
 	defines {
 		"PSAPI_VERSION=1"
 	}
-
-	filter {"system:windows", "toolset:*_xp*"}
-		links { "Psapi.lib" }
 
 	filter "architecture:x64"
 		flags { "ExcludeFromBuild" }

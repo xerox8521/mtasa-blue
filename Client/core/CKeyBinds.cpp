@@ -14,35 +14,38 @@
 
 using std::list;
 
-const SBindableKey g_bkKeys[] = {{"mouse1", 0x01, GTA_KEY_LMOUSE, DATA_NONE, 0},
-                                 {"mouse2", 0x02, GTA_KEY_RMOUSE, DATA_NONE, 0},
-                                 {"mouse3", 0x04, GTA_KEY_MMOUSE, DATA_NONE, 0},
+const SBindableKey g_bkKeys[] = {{"mouse1", VK_LBUTTON, GTA_KEY_LMOUSE, DATA_NONE, 0},
+                                 {"mouse2", VK_RBUTTON, GTA_KEY_RMOUSE, DATA_NONE, 0},
+                                 {"mouse3", VK_MBUTTON, GTA_KEY_MMOUSE, DATA_NONE, 0},
                                  {"mouse4", 0x00, GTA_KEY_MXB1, DATA_NONE, 0},
                                  {"mouse5", 0x00, GTA_KEY_MXB2, DATA_NONE, 0},
                                  {"mouse_wheel_up", 0x00, GTA_KEY_MSCROLLUP, DATA_NONE, 0},
                                  {"mouse_wheel_down", 0x00, GTA_KEY_MSCROLLDOWN, DATA_NONE, 0},
-                                 {"backspace", 0x08, GTA_KEY_BACK, DATA_NONE, 0},
-                                 {"tab", 0x09, GTA_KEY_TAB, DATA_NONE, 0},
-                                 {"lshift", 0x10, GTA_KEY_LSHIFT, DATA_NOT_EXTENDED, 0},
-                                 {"rshift", 0x10, GTA_KEY_RSHIFT, DATA_EXTENDED, 0},            // 10
-                                 {"lctrl", 0x11, GTA_KEY_LCONTROL, DATA_NOT_EXTENDED, 0},
-                                 {"rctrl", 0x11, GTA_KEY_RCONTROL, DATA_EXTENDED, 0},
-                                 {"lalt", 0x12, GTA_KEY_LMENU, DATA_NOT_EXTENDED, 0, true},
-                                 {"ralt", 0x12, GTA_KEY_RMENU, DATA_EXTENDED, 0, true},
-                                 {"pause", 0x13, GTA_KEY_PAUSE, DATA_NONE, 0, true},
-                                 {"capslock", 0x14, GTA_KEY_CAPSLOCK, DATA_NONE, 0},
-                                 {"enter", 0x0D, GTA_KEY_RETURN, DATA_NOT_EXTENDED, 0},
-                                 {"space", 0x20, GTA_KEY_SPACE, DATA_NONE, 0},
-                                 {"pgup", 0x21, GTA_KEY_PGUP, DATA_NUMPAD, 74, true},
-                                 {"pgdn", 0x22, GTA_KEY_PGDN, DATA_NUMPAD, 68, true},            // 20
-                                 {"end", 0x23, GTA_KEY_END, DATA_NUMPAD, 66},
-                                 {"home", 0x24, GTA_KEY_HOME, DATA_NUMPAD, 72},
-                                 {"arrow_l", 0x25, GTA_KEY_LEFT, DATA_NUMPAD, 69},
-                                 {"arrow_u", 0x26, GTA_KEY_UP, DATA_NUMPAD, 73},
-                                 {"arrow_r", 0x27, GTA_KEY_RIGHT, DATA_NUMPAD, 71},
-                                 {"arrow_d", 0x28, GTA_KEY_DOWN, DATA_NUMPAD, 67},
-                                 {"insert", 0x2D, GTA_KEY_INSERT, DATA_NUMPAD, 65, true},
-                                 {"delete", 0x2E, GTA_KEY_DELETE, DATA_NUMPAD, 79},
+                                 {"backspace", VK_BACK, GTA_KEY_BACK, DATA_NONE, 0},
+                                 {"tab", VK_TAB, GTA_KEY_TAB, DATA_NONE, 0},
+
+                                 // TODO: Consider using VK_(L|R)(SHIFT|CONTROL|MENU)
+                                 {"lshift", VK_SHIFT, GTA_KEY_LSHIFT, DATA_NOT_EXTENDED, 0},
+                                 {"rshift", VK_SHIFT, GTA_KEY_RSHIFT, DATA_EXTENDED, 0},            // 10
+                                 {"lctrl", VK_CONTROL, GTA_KEY_LCONTROL, DATA_NOT_EXTENDED, 0},
+                                 {"rctrl", VK_CONTROL, GTA_KEY_RCONTROL, DATA_EXTENDED, 0},
+                                 {"lalt", VK_MENU, GTA_KEY_LMENU, DATA_NOT_EXTENDED, 0, true},
+                                 {"ralt", VK_MENU, GTA_KEY_RMENU, DATA_EXTENDED, 0, true},
+
+                                 {"pause", VK_PAUSE, GTA_KEY_PAUSE, DATA_NONE, 0, true},
+                                 {"capslock", VK_CAPITAL, GTA_KEY_CAPSLOCK, DATA_NONE, 0},
+                                 {"enter", VK_RETURN, GTA_KEY_RETURN, DATA_NOT_EXTENDED, 0},
+                                 {"space", VK_SPACE, GTA_KEY_SPACE, DATA_NONE, 0},
+                                 {"pgup", VK_PRIOR, GTA_KEY_PGUP, DATA_NUMPAD, 74, true},
+                                 {"pgdn", VK_NEXT, GTA_KEY_PGDN, DATA_NUMPAD, 68, true},            // 20
+                                 {"end", VK_END, GTA_KEY_END, DATA_NUMPAD, 66},
+                                 {"home", VK_HOME, GTA_KEY_HOME, DATA_NUMPAD, 72},
+                                 {"arrow_l", VK_LEFT, GTA_KEY_LEFT, DATA_NUMPAD, 69},
+                                 {"arrow_u", VK_UP, GTA_KEY_UP, DATA_NUMPAD, 73},
+                                 {"arrow_r", VK_RIGHT, GTA_KEY_RIGHT, DATA_NUMPAD, 71},
+                                 {"arrow_d", VK_DOWN, GTA_KEY_DOWN, DATA_NUMPAD, 67},
+                                 {"insert", VK_INSERT, GTA_KEY_INSERT, DATA_NUMPAD, 65, true},
+                                 {"delete", VK_DELETE, GTA_KEY_DELETE, DATA_NUMPAD, 79},
                                  {"0", 0x30, GTA_KEY_0, DATA_NONE, 0},
                                  {"1", 0x31, GTA_KEY_1, DATA_NONE, 0},            // 30
                                  {"2", 0x32, GTA_KEY_2, DATA_NONE, 0},
@@ -79,35 +82,35 @@ const SBindableKey g_bkKeys[] = {{"mouse1", 0x01, GTA_KEY_LMOUSE, DATA_NONE, 0},
                                  {"x", 0x58, GTA_KEY_X, DATA_NONE, 0},
                                  {"y", 0x59, GTA_KEY_Y, DATA_NONE, 0},
                                  {"z", 0x5A, GTA_KEY_Z, DATA_NONE, 0},
-                                 {"num_0", 0x60, GTA_KEY_NUMPAD0, DATA_NONE, 0},
-                                 {"num_1", 0x61, GTA_KEY_NUMPAD1, DATA_NONE, 0},
-                                 {"num_2", 0x62, GTA_KEY_NUMPAD2, DATA_NONE, 0},
-                                 {"num_3", 0x63, GTA_KEY_NUMPAD3, DATA_NONE, 0},
-                                 {"num_4", 0x64, GTA_KEY_NUMPAD4, DATA_NONE, 0},
-                                 {"num_5", 0x65, GTA_KEY_NUMPAD5, DATA_NONE, 0},            // 70
-                                 {"num_6", 0x66, GTA_KEY_NUMPAD6, DATA_NONE, 0},
-                                 {"num_7", 0x67, GTA_KEY_NUMPAD7, DATA_NONE, 0},
-                                 {"num_8", 0x68, GTA_KEY_NUMPAD8, DATA_NONE, 0},
-                                 {"num_9", 0x69, GTA_KEY_NUMPAD9, DATA_NONE, 0},
-                                 {"num_mul", 0x6A, GTA_KEY_MULTIPLY, DATA_NONE, 0},
-                                 {"num_add", 0x6B, GTA_KEY_ADD, DATA_NONE, 0},
-                                 {"num_sep", 0x6C, NO_KEY_DEFINED, DATA_NONE, 0},
-                                 {"num_sub", 0x6D, GTA_KEY_SUBTRACT, DATA_NONE, 0},
-                                 {"num_dec", 0x6E, GTA_KEY_DECIMAL, DATA_NONE, 0},
-                                 {"num_div", 0x6F, GTA_KEY_DIVIDE, DATA_NONE, 0},            // 80
-                                 {"F1", 0x70, GTA_KEY_F1, DATA_NONE, 0, true},
-                                 {"F2", 0x71, GTA_KEY_F2, DATA_NONE, 0, true},
-                                 {"F3", 0x72, GTA_KEY_F3, DATA_NONE, 0, true},
-                                 {"F4", 0x73, GTA_KEY_F4, DATA_NONE, 0, true},
-                                 {"F5", 0x74, GTA_KEY_F5, DATA_NONE, 0, true},
-                                 {"F6", 0x75, GTA_KEY_F6, DATA_NONE, 0, true},
-                                 {"F7", 0x76, GTA_KEY_F7, DATA_NONE, 0, true},
-                                 //{ "F8",    0x77,          GTA_KEY_F8,             DATA_NONE },  * Used for console
-                                 {"F9", 0x78, GTA_KEY_F9, DATA_NONE, 0, true},
-                                 {"F10", 0x79, GTA_KEY_F10, DATA_NONE, 0, true},
-                                 {"F11", 0x7A, GTA_KEY_F11, DATA_NONE, 0, true},            // 90
-                                 {"F12", 0x7B, GTA_KEY_F12, DATA_NONE, 0, true},
-                                 {"scroll", 0x91, GTA_KEY_SCROLL, DATA_NONE, 0, true},
+                                 {"num_0", VK_NUMPAD0, GTA_KEY_NUMPAD0, DATA_NONE, 0},
+                                 {"num_1", VK_NUMPAD1, GTA_KEY_NUMPAD1, DATA_NONE, 0},
+                                 {"num_2", VK_NUMPAD2, GTA_KEY_NUMPAD2, DATA_NONE, 0},
+                                 {"num_3", VK_NUMPAD3, GTA_KEY_NUMPAD3, DATA_NONE, 0},
+                                 {"num_4", VK_NUMPAD4, GTA_KEY_NUMPAD4, DATA_NONE, 0},
+                                 {"num_5", VK_NUMPAD5, GTA_KEY_NUMPAD5, DATA_NONE, 0},            // 70
+                                 {"num_6", VK_NUMPAD6, GTA_KEY_NUMPAD6, DATA_NONE, 0},
+                                 {"num_7", VK_NUMPAD7, GTA_KEY_NUMPAD7, DATA_NONE, 0},
+                                 {"num_8", VK_NUMPAD8, GTA_KEY_NUMPAD8, DATA_NONE, 0},
+                                 {"num_9", VK_NUMPAD9, GTA_KEY_NUMPAD9, DATA_NONE, 0},
+                                 {"num_mul", VK_MULTIPLY, GTA_KEY_MULTIPLY, DATA_NONE, 0},
+                                 {"num_add", VK_ADD, GTA_KEY_ADD, DATA_NONE, 0},
+                                 {"num_sep", VK_SEPARATOR, NO_KEY_DEFINED, DATA_NONE, 0},
+                                 {"num_sub", VK_SUBTRACT, GTA_KEY_SUBTRACT, DATA_NONE, 0},
+                                 {"num_dec", VK_DECIMAL, GTA_KEY_DECIMAL, DATA_NONE, 0},
+                                 {"num_div", VK_DIVIDE, GTA_KEY_DIVIDE, DATA_NONE, 0},            // 80
+                                 {"F1", VK_F1, GTA_KEY_F1, DATA_NONE, 0, true},
+                                 {"F2", VK_F2, GTA_KEY_F2, DATA_NONE, 0, true},
+                                 {"F3", VK_F3, GTA_KEY_F3, DATA_NONE, 0, true},
+                                 {"F4", VK_F4, GTA_KEY_F4, DATA_NONE, 0, true},
+                                 {"F5", VK_F5, GTA_KEY_F5, DATA_NONE, 0, true},
+                                 {"F6", VK_F6, GTA_KEY_F6, DATA_NONE, 0, true},
+                                 {"F7", VK_F7, GTA_KEY_F7, DATA_NONE, 0, true},
+                                 //  {"F8", VK_F8, GTA_KEY_F8, DATA_NONE, 0, true}, * Used for console
+                                 {"F9", VK_F9, GTA_KEY_F9, DATA_NONE, 0, true},
+                                 {"F10", VK_F10, GTA_KEY_F10, DATA_NONE, 0, true},
+                                 {"F11", VK_F11, GTA_KEY_F11, DATA_NONE, 0, true},            // 90
+                                 {"F12", VK_F12, GTA_KEY_F12, DATA_NONE, 0, true},
+                                 {"scroll", VK_SCROLL, GTA_KEY_SCROLL, DATA_NONE, 0, true},
                                  {";", 0xBA, GTA_KEY_SEMICOLON, DATA_NONE, 0},
                                  {"=", 0xBB, GTA_KEY_EQUALS, DATA_NONE, 0},
                                  {",", 0xBC, GTA_KEY_COMMA, DATA_NONE, 0},
@@ -119,8 +122,8 @@ const SBindableKey g_bkKeys[] = {{"mouse1", 0x01, GTA_KEY_LMOUSE, DATA_NONE, 0},
                                  {"\\", 0xDC, GTA_KEY_BACKSLASH, DATA_NONE, 0},
                                  {"]", 0xDD, GTA_KEY_RBRACKET, DATA_NONE, 0},
                                  {"#", 0xDE, GTA_KEY_HASH, DATA_NONE, 0},
-                                 {"num_enter", 0x0D, GTA_KEY_NUMPADENTER, DATA_EXTENDED, 0},
-                                 {"clear", 0x0C, NO_KEY_DEFINED, DATA_NUMPAD, 70},
+                                 {"num_enter", VK_RETURN, GTA_KEY_NUMPADENTER, DATA_EXTENDED, 0},
+                                 {"clear", VK_CLEAR, NO_KEY_DEFINED, DATA_NUMPAD, 70},
 
                                  {"joy1", VK_JOY(1), GTA_KEY_JOY(1), DATA_NONE, 0},
                                  {"joy2", VK_JOY(2), GTA_KEY_JOY(2), DATA_NONE, 0},
@@ -252,8 +255,24 @@ const SDefaultCommandBind g_dcbDefaultCommands[] = {{"g", true, "enter_passenger
 
                                                     {"", false, NULL, NULL}};
 
+static bool bindableKeyStates[std::size(g_bkKeys)];
+
 // HACK: our current shift key states
 bool bPreLeftShift = false, bPreRightShift = false;
+
+enum eBindableKeys
+{
+    BK_MOUSE_WHEEL_UP = 5,
+    BK_MOUSE_WHEEL_DOWN = 6,
+};
+
+static bool& GetBindableKeyState(const SBindableKey* key)
+{
+    intptr_t base = reinterpret_cast<intptr_t>(&g_bkKeys[0]);
+    intptr_t offset = reinterpret_cast<intptr_t>(key);
+    size_t index = (offset - base) / sizeof(SBindableKey);
+    return bindableKeyStates[index];
+}
 
 // Ensure zero length strings are NULL
 static void NullEmptyStrings(const char*& a, const char*& b = *(const char**)NULL, const char*& c = *(const char**)NULL, const char*& d = *(const char**)NULL,
@@ -316,6 +335,18 @@ bool CKeyBinds::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     return false;
 }
 
+void CKeyBinds::OnLoseFocus()
+{
+    for (size_t i = 0; i < std::size(bindableKeyStates); ++i)
+    {
+        if (bindableKeyStates[i] == true)
+        {
+            const SBindableKey* key = &g_bkKeys[i];
+            ProcessKeyStroke(key, false);
+        }
+    }
+}
+
 bool CKeyBinds::ProcessCharacter(WPARAM wChar)
 {
     if (m_CharacterKeyHandler && m_CharacterKeyHandler(wChar))
@@ -364,6 +395,9 @@ bool CKeyBinds::ProcessKeyStroke(const SBindableKey* pKey, bool bState)
     bool bIsConsoleInputKey = true;
     if ((pKey->ulCode >= VK_F1 && pKey->ulCode <= VK_F12) || (pKey->ulCode <= VK_MBUTTON))
         bIsConsoleInputKey = false;
+
+    bool& keyState = GetBindableKeyState(pKey);
+    keyState = bState;
 
     bool bAllowed = TriggerKeyStrokeHandler(pKey->szKey, bState, bIsConsoleInputKey);
 
@@ -446,10 +480,14 @@ bool CKeyBinds::ProcessKeyStroke(const SBindableKey* pKey, bool bState)
                                                     }
                                                 }
 
-                                                // don't fire if its already fired
+                                                // don't add if its already added to queue
                                                 if (!bAlreadyProcessed)
                                                 {
-                                                    Call(pCommandBind);
+                                                    if (pCommandBind->bScriptCreated || processedList.empty())
+                                                        Call(pCommandBind);
+                                                    else
+                                                        m_vecBindQueue.push_back(pCommandBind);
+
                                                     processedList.push_back(pCommandBind);
                                                 }
                                             }
@@ -502,6 +540,11 @@ void CKeyBinds::Add(CKeyBind* pKeyBind)
 
 void CKeyBinds::Remove(CKeyBind* pKeyBind)
 {
+    // If this is an active chatbox bind, delete it
+    // so it won't be called on next frame
+    if (m_pChatBoxBind == pKeyBind)
+        m_pChatBoxBind = nullptr;
+
     if (m_bProcessingKeyStroke)
         pKeyBind->beingDeleted = true;
     else
@@ -1773,18 +1816,19 @@ bool CKeyBinds::ControlFunctionExists(SBindableGTAControl* pControl, ControlFunc
     return false;
 }
 
-const SBindableKey* CKeyBinds::GetBindableFromKey(const char* szKey)
+const SBindableKey* CKeyBinds::GetBindableFromKey(const char* szKey) const
 {
-    for (int i = 0; *g_bkKeys[i].szKey != NULL; i++)
+    for (int i = 0; *g_bkKeys[i].szKey != 0; i++)
     {
         const SBindableKey* temp = &g_bkKeys[i];
+
         if (!stricmp(temp->szKey, szKey))
         {
             return temp;
         }
     }
 
-    return NULL;
+    return nullptr;
 }
 
 SBindableGTAControl* CKeyBinds::GetBindableFromAction(eControllerAction action)
@@ -1905,6 +1949,17 @@ const SBindableKey* CKeyBinds::GetBindableFromMessage(UINT uMsg, WPARAM wParam, 
         }
     }
     return NULL;
+}
+
+bool CKeyBinds::GetKeyStateByName(const char* keyName, bool& state) const
+{
+    if (const SBindableKey* key = GetBindableFromKey(keyName); key != nullptr)
+    {
+        state = GetBindableKeyState(key);
+        return true;
+    }
+
+    return false;
 }
 
 SBindableGTAControl* CKeyBinds::GetBindableFromControl(const char* szControl)
@@ -2037,6 +2092,16 @@ void CKeyBinds::DoPreFramePulse()
     {
         Call(m_pChatBoxBind);
         m_pChatBoxBind = NULL;
+    }
+
+    // Execute two binds from queue
+    for (auto i = 0; i < 2; i++)
+    {
+        auto it = m_vecBindQueue.begin();
+        if (it == m_vecBindQueue.end())
+            break;
+        Call(*it);
+        m_vecBindQueue.erase(it);
     }
 
     // HACK: shift keys
@@ -2255,7 +2320,13 @@ void CKeyBinds::DoPostFramePulse()
         cs.ButtonTriangle = (g_bcControls[9].bState) ? 255 : 0;            // Enter Exit
         cs.Select = (g_bcControls[10].bState) ? 255 : 0;                   // Change View
 
-        GetJoystickManager()->ApplyAxes(cs, bInVehicle);
+        bool disableGameplayControls = m_pCore->IsCursorForcedVisible() && m_pCore->IsCursorControlsToggled();
+
+        if (!disableGameplayControls)
+        {
+            GetJoystickManager()->ApplyAxes(cs, bInVehicle);
+        }
+
         // m_pCore->GetMouseControl()->ApplyAxes ( cs );
     }
 
@@ -2291,6 +2362,10 @@ void CKeyBinds::DoPostFramePulse()
                 }
             }
         }
+
+        bindableKeyStates[BK_MOUSE_WHEEL_UP] = false;
+        bindableKeyStates[BK_MOUSE_WHEEL_DOWN] = false;
+
         m_bMouseWheel = false;
     }
 }

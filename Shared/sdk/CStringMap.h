@@ -7,7 +7,11 @@
  *  Multi Theft Auto is available from http://www.multitheftauto.com/
  *
  *****************************************************************************/
+#pragma once
 
+#include <map>
+#include <string>
+#include "SString.h"
 //
 // String map with parsing helpers like CScriptArgReader
 //
@@ -18,7 +22,11 @@ public:
     void ReadString(const SString& strKeyName, SString& strOutValue, const char* szDefaultValue)
     {
         V* pstrValue = MapFind(*this, strKeyName);
-        strOutValue = pstrValue ? **pstrValue : szDefaultValue;
+
+        if (pstrValue)
+            strOutValue = *pstrValue;
+        else
+            strOutValue = szDefaultValue;
     }
 
     template <typename T, typename U>

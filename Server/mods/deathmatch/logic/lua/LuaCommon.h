@@ -38,12 +38,15 @@ void lua_pushxmlnode(lua_State* luaVM, class CXMLNode* pNode);
 void lua_pushban(lua_State* luaVM, class CBan* pBan);
 void lua_pushquery(lua_State* luaVM, class CDbJobData* pJobData);
 void lua_pushuserdata(lua_State* luaVM, void* value);
-void lua_pushobject(lua_State* luaVM, const char* szClass, void* pObject);
+void lua_pushobject(lua_State* luaVM, const char* szClass, void* pObject, bool bSkipCache = false);
 
 void lua_pushvector(lua_State* luaVM, const CVector2D& vector);
 void lua_pushvector(lua_State* luaVM, const CVector& vector);
 void lua_pushvector(lua_State* luaVM, const CVector4D& vector);
 void lua_pushmatrix(lua_State* luaVM, const CMatrix& matrix);
+
+class CLuaMain& lua_getownercluamain(lua_State* L);
+class CResource& lua_getownerresource(lua_State* L);
 
 // Converts any type to string
 const char* lua_makestring(lua_State* luaVM, int iArgument);

@@ -10,6 +10,7 @@
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <core/CClientCommands.h>
 #include <game/CGame.h>
 
 using namespace std;
@@ -375,6 +376,16 @@ void CSettings::CreateGUI()
     m_pCheckBoxAllowScreenUpload->SetPosition(CVector2D(vecTemp.fX, vecTemp.fY + 20.0f));
     m_pCheckBoxAllowScreenUpload->GetPosition(vecTemp, false);
     m_pCheckBoxAllowScreenUpload->AutoSize(NULL, 20.0f);
+
+    m_pCheckBoxAllowExternalSounds = reinterpret_cast<CGUICheckBox*>(pManager->CreateCheckBox(pTabMultiplayer, _("Allow external sounds"), true));
+    m_pCheckBoxAllowExternalSounds->SetPosition(CVector2D(vecTemp.fX, vecTemp.fY + 20.0f));
+    m_pCheckBoxAllowExternalSounds->GetPosition(vecTemp, false);
+    m_pCheckBoxAllowExternalSounds->AutoSize(NULL, 20.0f);
+
+    m_pCheckBoxAlwaysShowTransferBox = reinterpret_cast<CGUICheckBox*>(pManager->CreateCheckBox(pTabMultiplayer, _("Always show download window"), false));
+    m_pCheckBoxAlwaysShowTransferBox->SetPosition(CVector2D(vecTemp.fX, vecTemp.fY + 20.0f));
+    m_pCheckBoxAlwaysShowTransferBox->GetPosition(vecTemp, false);
+    m_pCheckBoxAlwaysShowTransferBox->AutoSize(nullptr, 20.0f);
 
     m_pCheckBoxCustomizedSAFiles = reinterpret_cast<CGUICheckBox*>(pManager->CreateCheckBox(pTabMultiplayer, _("Use customized GTA:SA files"), true));
     m_pCheckBoxCustomizedSAFiles->SetPosition(CVector2D(vecTemp.fX, vecTemp.fY + 20.0f));
@@ -1213,6 +1224,7 @@ void CSettings::CreateGUI()
     m_pComboFxQuality->SetSelectionHandler(GUI_CALLBACK(&CSettings::OnFxQualityChanged, this));
     m_pCheckBoxVolumetricShadows->SetClickHandler(GUI_CALLBACK(&CSettings::OnVolumetricShadowsClick, this));
     m_pCheckBoxAllowScreenUpload->SetClickHandler(GUI_CALLBACK(&CSettings::OnAllowScreenUploadClick, this));
+    m_pCheckBoxAllowExternalSounds->SetClickHandler(GUI_CALLBACK(&CSettings::OnAllowExternalSoundsClick, this));
     m_pCheckBoxCustomizedSAFiles->SetClickHandler(GUI_CALLBACK(&CSettings::OnCustomizedSAFilesClick, this));
     m_pCheckBoxWindowed->SetClickHandler(GUI_CALLBACK(&CSettings::OnWindowedClick, this));
     m_pCheckBoxDPIAware->SetClickHandler(GUI_CALLBACK(&CSettings::OnDPIAwareClick, this));
@@ -1500,15 +1512,6 @@ void CSettings::UpdateVideoTab()
     bool bShowUnsafeResolutions;
     CVARS_GET("show_unsafe_resolutions", bShowUnsafeResolutions);
     m_pCheckBoxShowUnsafeResolutions->SetSelected(bShowUnsafeResolutions);
-
-    // Allow screen upload
-    bool bAllowScreenUploadEnabled;
-    CVARS_GET("allow_screen_upload", bAllowScreenUploadEnabled);
-    m_pCheckBoxAllowScreenUpload->SetSelected(bAllowScreenUploadEnabled);
-
-    // Customized sa files
-    m_pCheckBoxCustomizedSAFiles->SetSelected(GetApplicationSettingInt("customized-sa-files-request") != 0);
-    m_pCheckBoxCustomizedSAFiles->SetVisible(GetApplicationSettingInt("customized-sa-files-show") != 0);
 
     // Grass
     bool bGrassEnabled;
@@ -2326,7 +2329,7 @@ void CSettings::ProcessKeyBinds()
     for (int i = 0; i < m_pBindsList->GetRowCount(); i++)
     {
         // Get the type and keys
-        unsigned char       ucType = reinterpret_cast<unsigned char>(m_pBindsList->GetItemData(i, m_hBind));
+        unsigned char       ucType = reinterpret_cast<unsigned int>(m_pBindsList->GetItemData(i, m_hBind));
         const char*         szPri = m_pBindsList->GetItemText(i, m_hPriKey);
         const SBindableKey* pPriKey = pKeyBinds->GetBindableFromKey(szPri);
         const SBindableKey* pSecKeys[SecKeyNum];
@@ -2920,6 +2923,25 @@ void CSettings::LoadData()
     CVARS_GET("auto_refresh_browser", bVar);
     m_pAutoRefreshBrowser->SetSelected(bVar);
 
+    // Allow screen upload
+    bool bAllowScreenUploadEnabled;
+    CVARS_GET("allow_screen_upload", bAllowScreenUploadEnabled);
+    m_pCheckBoxAllowScreenUpload->SetSelected(bAllowScreenUploadEnabled);
+
+    // Allow external sounds
+    bool bAllowExternalSoundsEnabled;
+    CVARS_GET("allow_external_sounds", bAllowExternalSoundsEnabled);
+    m_pCheckBoxAllowExternalSounds->SetSelected(bAllowExternalSoundsEnabled);
+
+    // Always show transfer box
+    bool alwaysShowTransferBox = false;
+    CVARS_GET("always_show_transferbox", alwaysShowTransferBox);
+    m_pCheckBoxAlwaysShowTransferBox->SetSelected(alwaysShowTransferBox);
+
+    // Customized sa files
+    m_pCheckBoxCustomizedSAFiles->SetSelected(GetApplicationSettingInt("customized-sa-files-request") != 0);
+    m_pCheckBoxCustomizedSAFiles->SetVisible(GetApplicationSettingInt("customized-sa-files-show") != 0);
+
     // Controls
     CVARS_GET("invert_mouse", bVar);
     m_pInvertMouse->SetSelected(bVar);
@@ -3332,6 +3354,15 @@ void CSettings::SaveData()
     // Allow screen upload
     bool bAllowScreenUploadEnabled = m_pCheckBoxAllowScreenUpload->GetSelected();
     CVARS_SET("allow_screen_upload", bAllowScreenUploadEnabled);
+
+    // Allow external sounds
+    bool bAllowExternalSoundsEnabled = m_pCheckBoxAllowExternalSounds->GetSelected();
+    CVARS_SET("allow_external_sounds", bAllowExternalSoundsEnabled);
+
+    // Always show transfer box
+    bool alwaysShowTransferBox = m_pCheckBoxAlwaysShowTransferBox->GetSelected();
+    CVARS_SET("always_show_transferbox", alwaysShowTransferBox);
+    g_pCore->GetModManager()->TriggerCommand(mtasa::CMD_ALWAYS_SHOW_TRANSFERBOX, alwaysShowTransferBox);
 
     // Grass
     bool bGrassEnabled = m_pCheckBoxGrass->GetSelected();
@@ -4332,6 +4363,24 @@ bool CSettings::OnAllowScreenUploadClick(CGUIElement* pElement)
             _("Screen upload is required by some servers for anti-cheat purposes."
               "\n\n(The chat box and GUI is excluded from the upload)\n");
         CCore::GetSingleton().ShowMessageBox(_("SCREEN UPLOAD INFORMATION"), strMessage, MB_BUTTON_OK | MB_ICON_INFO);
+    }
+    return true;
+}
+
+//
+// AllowExternalSounds
+//
+bool CSettings::OnAllowExternalSoundsClick(CGUIElement* pElement)
+{
+    if (!m_pCheckBoxAllowExternalSounds->GetSelected() && !m_bShownAllowExternalSoundsMessage)
+    {
+        m_bShownAllowExternalSoundsMessage = true;
+        SString strMessage;
+        strMessage +=
+            _("Some scripts may play sounds, such as radio, from the internet."
+              "\n\nDisabling this setting may decrease network"
+              "\nbandwidth consumption.\n");
+        CCore::GetSingleton().ShowMessageBox(_("EXTERNAL SOUNDS"), strMessage, MB_BUTTON_OK | MB_ICON_INFO);
     }
     return true;
 }

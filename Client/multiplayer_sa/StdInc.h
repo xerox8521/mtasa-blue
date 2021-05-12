@@ -1,4 +1,3 @@
-#pragma message("Compiling precompiled header.\n")
 
 // Pragmas
 #pragma warning (disable:4250)
@@ -23,8 +22,7 @@
 #include <net/CNet.h>
 #include <game/CGame.h>
 #include <CMatrix_Pad.h>
-#include <../version.h>
-#include <hwbrk.h>
+#include <version.h>
 
 // Multiplayer includes
 #include "multiplayersa_init.h"
@@ -39,7 +37,6 @@
 #include "..\game_sa\CEntitySA.h"
 #include "..\game_sa\CBuildingSA.h"
 #include "..\game_sa\CPedSA.h"
-#include "..\game_sa\CAnimBlendAssocGroupSA.h"
 #include "..\game_sa\common.h"
 #include "..\core\CCrashDumpWriter.h"
 

@@ -5,7 +5,11 @@ project "Client Launcher"
 	targetdir(buildpath("."))
 	debugdir(buildpath("."))
 
-	includedirs { "../sdk" }
+	includedirs {
+		"../../Shared/sdk",
+		"../sdk",
+	}
+
 	pchheader "StdInc.h"
 	pchsource "StdInc.cpp"
 
@@ -32,10 +36,7 @@ project "Client Launcher"
 			"launch.rc",
 			"mtaicon.ico"
 		}
-
-	filter {"system:windows", "toolset:*_xp*"}
-		links { "Psapi.lib" }
-
+		
 	filter "architecture:x64"
 		flags { "ExcludeFromBuild" }
 

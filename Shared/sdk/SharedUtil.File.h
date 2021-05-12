@@ -8,6 +8,13 @@
  *  Multi Theft Auto is available from http://www.multitheftauto.com/
  *
  *****************************************************************************/
+#pragma once
+
+#include <vector>
+#include "SharedUtil.IntTypes.h"
+#include "SString.h"
+#include "WString.h"
+
 
 namespace SharedUtil
 {
@@ -22,6 +29,7 @@ namespace SharedUtil
     //
     bool FileLoad(const SString& strFilename, std::vector<char>& buffer, int iMaxSize = INT_MAX, int iOffset = 0);
     bool FileLoad(const SString& strFilename, SString& strBuffer, int iMaxSize = INT_MAX, int iOffset = 0);
+    bool FileLoad(std::nothrow_t, const SString& filePath, SString& outBuffer, size_t maxSize = INT_MAX, size_t offset = 0) noexcept;
 
     //
     // Save to a file

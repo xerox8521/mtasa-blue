@@ -27,15 +27,13 @@ class CAccessControlListManager;
 #define LUA_ERROR() lua_pushboolean ( luaVM, false ); return 0;
 #define LUA_DECLARE(x) static int x ( lua_State * luaVM );
 
+
 extern CTimeUsMarker<20> markerLatentEvent;            // For timing triggerLatentClientEvent
 
 class CLuaFunctionDefs
 {
 public:
     static void Initialize(class CLuaManager* pLuaManager, class CGame* pClientGame);
-
-    LUA_DECLARE(CallRemote);
-    LUA_DECLARE(FetchRemote);
 
     // Event functions
     LUA_DECLARE(AddEvent);
@@ -99,22 +97,7 @@ public:
     LUA_DECLARE(GetCommandHandlers);
 
     // Standard server functions
-    LUA_DECLARE(GetMaxPlayers);
-    LUA_DECLARE(SetMaxPlayers);
-    LUA_DECLARE(OutputChatBox);
-    LUA_DECLARE(OOP_OutputChatBox);
-    LUA_DECLARE(OutputConsole);
-    LUA_DECLARE(OutputDebugString);
-    LUA_DECLARE(OutputServerLog);
-    LUA_DECLARE(GetServerName);
-    LUA_DECLARE(GetServerHttpPort);
-    LUA_DECLARE(GetServerIP);
-    LUA_DECLARE(GetServerPassword);
-    LUA_DECLARE(SetServerPassword);
-    LUA_DECLARE(GetServerConfigSetting);
     LUA_DECLARE(SetServerConfigSetting);
-    LUA_DECLARE(ClearChatBox);
-
     LUA_DECLARE(shutdown);
 
     // Loaded Map Functions

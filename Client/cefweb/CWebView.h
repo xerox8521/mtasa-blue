@@ -20,6 +20,7 @@
 #include <cef3/include/cef_render_handler.h>
 #include <cef3/include/cef_life_span_handler.h>
 #include <cef3/include/cef_context_menu_handler.h>
+#include <cef3/include/cef_resource_request_handler.h>
 #include <SString.h>
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
@@ -34,6 +35,7 @@ class CWebView : public CWebViewInterface,
                  private CefRenderHandler,
                  private CefLoadHandler,
                  private CefRequestHandler,
+                 private CefResourceRequestHandler,
                  private CefLifeSpanHandler,
                  private CefJSDialogHandler,
                  private CefDialogHandler,
@@ -57,6 +59,7 @@ public:
     SString            GetURL();
     const SString&     GetTitle();
     void               SetRenderingPaused(bool bPaused);
+    const bool         GetRenderingPaused() const;
     void               Focus(bool state = true);
     IDirect3DTexture9* GetTexture() { return static_cast<IDirect3DTexture9*>(m_pWebBrowserRenderItem->m_pD3DTexture); }
     void               ClearTexture();
@@ -87,7 +90,7 @@ public:
     virtual CVector2D GetSize() override;
 
     bool GetFullPathFromLocal(SString& strPath);
-    bool VerifyFile(const SString& strPath);
+    bool VerifyFile(const SString& strPath, CBuffer& outFileData);
 
     virtual bool RegisterAjaxHandler(const SString& strURL) override;
     virtual bool UnregisterAjaxHandler(const SString& strURL) override;
@@ -111,7 +114,8 @@ public:
     virtual CefRefPtr<CefDialogHandler>      GetDialogHandler() override { return this; };
     virtual CefRefPtr<CefDisplayHandler>     GetDisplayHandler() override { return this; };
     virtual CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override { return this; };
-    virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefProcessId source_process, CefRefPtr<CefProcessMessage> message) override;
+    virtual bool                             OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process,
+                                                                      CefRefPtr<CefProcessMessage> message) override;
 
     // CefRenderHandler methods
     virtual void GetViewRect(CefRefPtr<CefBrowser> browser, CefRect& rect) override;
@@ -119,7 +123,6 @@ public:
     virtual void OnPopupSize(CefRefPtr<CefBrowser> browser, const CefRect& rect) override;
     virtual void OnPaint(CefRefPtr<CefBrowser> browser, CefRenderHandler::PaintElementType paintType, const CefRenderHandler::RectList& dirtyRects,
                          const void* buffer, int width, int height) override;
-    virtual void OnCursorChange(CefRefPtr<CefBrowser> browser, CefCursorHandle cursor, CursorType type, const CefCursorInfo& cursorInfo) override;
 
     // CefLoadHandler methods
     virtual void OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transitionType) override;
@@ -129,14 +132,23 @@ public:
 
     // CefRequestHandler methods
     virtual bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool userGesture, bool isRedirect) override;
-    virtual CefRequestHandler::ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request,
+    virtual CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                                                                           CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
+                                                                           const CefString& request_initiator, bool& disable_default_handling) override
+    {
+        return this;
+    };
+
+    // CefResourceRequestHandler
+    virtual CefResourceRequestHandler::ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request,
                                                                 CefRefPtr<CefRequestCallback> callback) override;
 
     // CefLifeSpawnHandler methods
     virtual void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
     virtual bool OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& target_url, const CefString& target_frame_name,
                                CefLifeSpanHandler::WindowOpenDisposition target_disposition, bool user_gesture, const CefPopupFeatures& popupFeatures,
-                               CefWindowInfo& windowInfo, CefRefPtr<CefClient>& client, CefBrowserSettings& settings, bool* no_javascript_access) override;
+                               CefWindowInfo& windowInfo, CefRefPtr<CefClient>& client, CefBrowserSettings& settings, CefRefPtr<CefDictionaryValue>& extra_info,
+                               bool* no_javascript_access) override;
     virtual void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
 
     // CefJSDialogHandler methods
@@ -153,6 +165,7 @@ public:
     virtual bool OnTooltip(CefRefPtr<CefBrowser> browser, CefString& text) override;
     virtual bool OnConsoleMessage(CefRefPtr<CefBrowser> browser, cef_log_severity_t level, const CefString& message, const CefString& source,
                                   int line) override;
+    virtual bool OnCursorChange(CefRefPtr<CefBrowser> browser, CefCursorHandle cursor, cef_cursor_type_t type, const CefCursorInfo& cursorInfo) override;
 
     // CefContextMenuHandler methods
     virtual void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params,
@@ -164,6 +177,7 @@ private:
 
     bool                       m_bBeingDestroyed;
     bool                       m_bIsLocal;
+    bool                       m_bIsRenderingPaused;
     bool                       m_bIsTransparent;
     POINT                      m_vecMousePosition;
     bool                       m_mouseButtonStates[3];

@@ -1,4 +1,3 @@
-#pragma message("Compiling precompiled header.\n")
 
 // Pragmas
 #pragma warning (disable:4409)
@@ -21,10 +20,11 @@
 
 // SDK includes
 #include <core/CCoreInterface.h>
+#include <CRect.h>
 #include <net/CNet.h>
 #include <game/CGame.h>
 #include <game/CWanted.h>
-#include <../version.h>
+#include <version.h>
 #include <ijsify.h>
 
 // Game includes
@@ -55,7 +55,6 @@
 #include "CPadSA.h"
 #include "CAERadioTrackManagerSA.h"
 #include "CWeatherSA.h"
-#include "CTextSA.h"
 #include "CPedSA.h"
 #include "CPedSoundSA.h"
 #include "CAudioEngineSA.h"
@@ -117,3 +116,5 @@
 #include "CShadowDataSA.h"
 #include "CBuoyancySA.h"
 #include "CEventGroupSA.h"
+#include "CMatrixSA.h"
+#include "CTrainSA.h"

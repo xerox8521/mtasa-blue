@@ -27,6 +27,7 @@ public:
     LUA_DECLARE(GetElementByID);
     LUA_DECLARE(GetElementByIndex);
     LUA_DECLARE(GetElementData);
+    LUA_DECLARE(HasElementData);
     LUA_DECLARE(GetElementParent);
     LUA_DECLARE_OOP(GetElementMatrix);
     LUA_DECLARE_OOP(GetElementPosition);
@@ -39,7 +40,8 @@ public:
     LUA_DECLARE(IsElementWithinColShape);
     LUA_DECLARE(IsElementWithinMarker);
     LUA_DECLARE(GetElementsWithinColShape);
-    LUA_DECLARE(GetElementsWithinRange);
+    static CClientEntityResult GetElementsWithinRange(CVector pos, float radius, std::optional<std::string> type,
+        std::optional<unsigned short> interior, std::optional<unsigned short> dimension);
     LUA_DECLARE(GetElementDimension);
     LUA_DECLARE(GetElementZoneName);
     LUA_DECLARE_OOP(GetElementBoundingBox);

@@ -23,6 +23,7 @@ class CClientVehicle;
 #include "CClientStreamElement.h"
 #include "CClientVehicleManager.h"
 #include "CVehicleUpgrades.h"
+#include "CClientModel.h"
 
 #define INVALID_PASSENGER_SEAT 0xFF
 #define DEFAULT_VEHICLE_HEALTH 1000
@@ -197,7 +198,7 @@ public:
     void  SetHealth(float fHealth);
     void  Fix();
     void  Blow(bool bAllowMovement = false);
-    bool  IsVehicleBlown() { return m_bBlown; };
+    bool  IsVehicleBlown() const noexcept { return m_bBlown; };
 
     CVehicleColor& GetColor();
     void           SetColor(const CVehicleColor& color);
@@ -258,10 +259,13 @@ public:
     unsigned char GetDoorStatus(unsigned char ucDoor);
     unsigned char GetWheelStatus(unsigned char ucWheel);
     bool          IsWheelCollided(unsigned char ucWheel);
+    int           GetWheelFrictionState(unsigned char ucWheel);
     unsigned char GetPanelStatus(unsigned char ucPanel);
     unsigned char GetLightStatus(unsigned char ucLight);
 
-    void SetDoorStatus(unsigned char ucDoor, unsigned char ucStatus);
+    bool AreLightsOn();
+
+    void SetDoorStatus(unsigned char ucDoor, unsigned char ucStatus, bool spawnFlyingComponent);
     void SetWheelStatus(unsigned char ucWheel, unsigned char ucStatus, bool bSilent = true);
     void SetPanelStatus(unsigned char ucPanel, unsigned char ucStatus);
     void SetLightStatus(unsigned char ucLight, unsigned char ucStatus);
@@ -352,6 +356,7 @@ public:
     bool            SetTowedVehicle(CClientVehicle* pVehicle, const CVector* vecRotationDegrees = NULL);
     CClientVehicle* GetTowedByVehicle() { return m_pTowedByVehicle; }
     bool            InternalSetTowLink(CClientVehicle* pTrailer);
+    bool            IsTowableBy(CClientVehicle* towingVehicle);
 
     eWinchType     GetWinchType() { return m_eWinchType; }
     bool           SetWinchType(eWinchType winchType);
@@ -454,7 +459,16 @@ public:
 
     void                  ApplyHandling();
     CHandlingEntry*       GetHandlingData();
-    const CHandlingEntry* GetOriginalHandlingData() { return m_pOriginalHandlingEntry; }
+    const CHandlingEntry* GetOriginalHandlingData() { return m_pOriginalHandlingEntry; };
+
+    CFlyingHandlingEntry*       GetFlyingHandlingData();
+    const CFlyingHandlingEntry* GetOriginalFlyingHandlingData() { return m_pOriginalFlyingHandlingEntry; };
+
+    CBoatHandlingEntry*       GetBoatHandlingData();
+    const CBoatHandlingEntry* GetOriginalBoatHandlingData() { return m_pOriginalBoatHandlingEntry; };
+
+    CBikeHandlingEntry*       GetBikeHandlingData();
+    const CBikeHandlingEntry* GetOriginalBikeHandlingData() { return m_pOriginalBikeHandlingEntry; };
 
     uint GetTimeSinceLastPush() { return (uint)(CTickCount::Now() - m_LastPushedTime).ToLongLong(); }
     void ResetLastPushTime() { m_LastPushedTime = CTickCount::Now(); }
@@ -491,7 +505,15 @@ public:
 
     void SetHeliBladeCollisionsEnabled(bool bEnable) { m_bEnableHeliBladeCollisions = bEnable; }
 
+    float GetWheelScale();
+    void  SetWheelScale(float fWheelScale);
+    void  ResetWheelScale();
+
     bool OnVehicleFallThroughMap();
+
+    bool GetDummyPosition(eVehicleDummies dummy, CVector& position) const;
+    bool SetDummyPosition(eVehicleDummies dummy, const CVector& position);
+    bool ResetDummyPositions();
 
 protected:
     void ConvertComponentRotationBase(const SString& vehicleComponent, CVector& vecInOutRotation, EComponentBaseType inputBase, EComponentBaseType outputBase);
@@ -601,10 +623,17 @@ protected:
     bool                                   m_bIsOnGround;
     bool                                   m_bHeliSearchLightVisible;
     float                                  m_fHeliRotorSpeed;
-    const CHandlingEntry*                  m_pOriginalHandlingEntry;
-    CHandlingEntry*                        m_pHandlingEntry;
+    const CHandlingEntry*                  m_pOriginalHandlingEntry = nullptr;
+    CHandlingEntry*                        m_pHandlingEntry = nullptr;
+    const CFlyingHandlingEntry*            m_pOriginalFlyingHandlingEntry = nullptr;
+    CFlyingHandlingEntry*                  m_pFlyingHandlingEntry = nullptr;
+    const CBoatHandlingEntry*              m_pOriginalBoatHandlingEntry = nullptr;
+    CBoatHandlingEntry*                    m_pBoatHandlingEntry = nullptr;
+    const CBikeHandlingEntry*              m_pOriginalBikeHandlingEntry = nullptr;
+    CBikeHandlingEntry*                    m_pBikeHandlingEntry = nullptr;
     float                                  m_fNitroLevel;
     char                                   m_cNitroCount;
+    float                                  m_fWheelScale;
 
     bool  m_bChainEngine;
     bool  m_bIsDerailed;
@@ -614,6 +643,7 @@ protected:
     float m_fTrainPosition;
     uchar m_ucTrackID;
     bool  m_bJustStreamedIn;
+    bool  m_bWheelScaleChanged;
 
     // Time dependent error compensation interpolation
     struct
@@ -670,6 +700,7 @@ protected:
     CMatrix                        m_matCreate;
     unsigned char                  m_ucFellThroughMapCount;
     SFixedArray<bool, MAX_WINDOWS> m_bWindowOpen;
+    std::shared_ptr<CClientModel>  m_clientModel;
 
 public:
 #ifdef MTA_DEBUG
@@ -681,4 +712,7 @@ public:
     SSirenInfo                               m_tSirenBeaconInfo;
     std::map<SString, SVehicleComponentData> m_ComponentData;
     bool                                     m_bAsyncLoadingDisabled;
+
+    std::array<CVector, VEHICLE_DUMMY_COUNT> m_dummyPositions;
+    bool                                     m_copyDummyPositions = true;
 };

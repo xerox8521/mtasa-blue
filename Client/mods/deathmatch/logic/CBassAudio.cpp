@@ -341,9 +341,9 @@ void CALLBACK BeatCallback(DWORD chan, double beatpos, void* user)
     UnlockCallbackId();
 }
 
-void CBassAudio::PlayStreamIntern(void* arguments)
+DWORD CBassAudio::PlayStreamIntern(LPVOID argument)
 {
-    CBassAudio* pBassAudio = LockCallbackId(arguments);
+    CBassAudio* pBassAudio = LockCallbackId(argument);
     if (pBassAudio)
     {
         pBassAudio->m_pVars->criticalSection.Lock();
@@ -355,7 +355,7 @@ void CBassAudio::PlayStreamIntern(void* arguments)
         // This can take a while
         HSTREAM pSound = BASS_StreamCreateURL(FromUTF8(strURL), 0, lFlags | BASS_UNICODE, NULL, NULL);
 
-        CBassAudio* pBassAudio = LockCallbackId(arguments);
+        CBassAudio* pBassAudio = LockCallbackId(argument);
         if (pBassAudio)
         {
             pBassAudio->m_pVars->criticalSection.Lock();
@@ -365,12 +365,14 @@ void CBassAudio::PlayStreamIntern(void* arguments)
         }
         else
         {
-            // Deal with unwanted pSound
-            g_pClientGame->GetManager()->GetSoundManager()->QueueChannelStop(pSound);
+            // Deal with unwanted pSound unless we're disconnecting already
+            if (g_pClientGame != nullptr && !g_pClientGame->IsBeingDeleted())
+                g_pClientGame->GetManager()->GetSoundManager()->QueueChannelStop(pSound);
         }
     }
 
     UnlockCallbackId();
+    return 0;
 }
 
 //
@@ -644,6 +646,16 @@ void CBassAudio::SetPlaybackSpeed(float fSpeed)
         BASS_ChannelSetAttribute(m_pSound, BASS_ATTRIB_FREQ, fSpeed * m_fDefaultFrequency);
 }
 
+bool CBassAudio::SetLooped(bool bLoop)
+{
+    if (!m_pSound)
+        return false;
+
+    m_bLoop = bLoop;
+
+    return BASS_ChannelFlags(m_pSound, bLoop ? BASS_SAMPLE_LOOP : 0, BASS_SAMPLE_LOOP);
+}
+
 void CBassAudio::SetPosition(const CVector& vecPosition)
 {
     m_vecPosition = vecPosition;
@@ -768,12 +780,12 @@ float CBassAudio::GetSoundBPM()
 
         // open the same file as played but for bpm decoding detection
         DWORD bpmChan = BASS_StreamCreateFile(false, FromUTF8(m_strPath), 0, 0, BASS_STREAM_DECODE | BASS_UNICODE);
-        
+
         if (!bpmChan)
         {
             bpmChan = BASS_MusicLoad(false, FromUTF8(m_strPath), 0, 0, BASS_MUSIC_DECODE | BASS_MUSIC_PRESCAN | BASS_UNICODE, 0);
         }
-        
+
         if (bpmChan)
         {
             fData = BASS_FX_BPM_DecodeGet(bpmChan, 0, GetLength(), 0, BASS_FX_FREESOURCE, NULL, NULL);

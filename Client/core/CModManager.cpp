@@ -142,6 +142,7 @@ CClientBase* CModManager::Load(const char* szName, const char* szArguments)
     {
         CCore::GetSingleton().GetConsole()->Printf("Unable to load %s's DLL (unknown mod)", szName, GetLastError());
         FreeLibrary(m_hClientDLL);
+        m_hClientDLL = nullptr;
         return NULL;
     }
 
@@ -153,6 +154,8 @@ CClientBase* CModManager::Load(const char* szName, const char* szArguments)
     {
         CCore::GetSingleton().GetConsole()->Printf("Unable to load %s's DLL (unable to init, bad version?)", szName, GetLastError());
         FreeLibrary(m_hClientDLL);
+        m_pClientBase = nullptr;
+        m_hClientDLL = nullptr;
         return NULL;
     }
 
@@ -309,6 +312,14 @@ void CModManager::RefreshMods()
     // Clear the list, and load it again
     Clear();
     InitializeModList(CalcMTASAPath("mods\\"));
+}
+
+bool CModManager::TriggerCommand(const char* commandName, size_t commandNameLength, const void* userdata, size_t userdataSize) const
+{
+    if (!m_pClientBase || commandName == nullptr || commandNameLength == 0)
+        return false;
+
+    return m_pClientBase->ProcessCommand(commandName, commandNameLength, userdata, userdataSize);
 }
 
 void CModManager::InitializeModList(const char* szModFolderPath)

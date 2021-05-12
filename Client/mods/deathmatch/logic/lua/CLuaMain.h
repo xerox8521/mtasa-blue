@@ -62,8 +62,9 @@ public:
     class CResource* GetResource() { return m_pResource; }
 
     CXMLFile*     CreateXML(const char* szFilename, bool bUseIDs = true, bool bReadOnly = false);
-    void          DestroyXML(CXMLFile* pFile);
-    void          DestroyXML(CXMLNode* pRootNode);
+    CXMLNode*     ParseString(const char* strXmlContent);
+    bool          DestroyXML(CXMLFile* pFile);
+    bool          DestroyXML(CXMLNode* pRootNode);
     bool          SaveXML(CXMLNode* pRootNode);
     unsigned long GetXMLFileCount() const { return m_XMLFiles.size(); };
     unsigned long GetTimerCount() const { return m_pLuaTimerManager ? m_pLuaTimerManager->GetTimerCount() : 0; };
@@ -71,6 +72,7 @@ public:
 
     void           InitClasses(lua_State* luaVM);
     void           InitVM();
+    void           LoadEmbeddedScripts();
     const SString& GetFunctionTag(int iLuaFunction);
     int            PCall(lua_State* L, int nargs, int nresults, int errfunc);
     static int     LuaLoadBuffer(lua_State* L, const char* buff, size_t sz, const char* name);
@@ -94,7 +96,8 @@ private:
 
     class CResource* m_pResource;
 
-    std::list<CXMLFile*> m_XMLFiles;
+    std::list<CXMLFile*>                            m_XMLFiles;
+    std::unordered_set<std::unique_ptr<SXMLString>> m_XMLStringNodes;
     static SString       ms_strExpectedUndumpHash;
 
     bool m_bEnableOOP;

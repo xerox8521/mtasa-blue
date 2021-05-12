@@ -1,8 +1,8 @@
 /*****************************************************************************
  *
- *  PROJECT:     Multi Theft Auto v1.x
+ *  PROJECT:     Multi Theft Auto
  *  LICENSE:     See LICENSE in the top level directory
- *  FILE:        mods/shared_logic/luadefs/CLuaAudioDefs.h
+ *  FILE:        mods/deathmatch/logic/luadefs/CLuaAudioDefs.h
  *  PURPOSE:     Lua audio definitions class header
  *
  *  Multi Theft Auto is available from http://www.multitheftauto.com/
@@ -62,8 +62,14 @@ public:
     LUA_DECLARE(SetSoundPan);
     LUA_DECLARE(GetSoundPan);
 
+    static bool SetSoundLooped(CClientSound* pSound, bool bLoop);
+    static bool IsSoundLooped(CClientSound* pSound);
+
     // Radio functions
     LUA_DECLARE(SetRadioChannel);
     LUA_DECLARE(GetRadioChannel);
     LUA_DECLARE(GetRadioChannelName);
+
+    static bool ShowSound(bool state);
+    static bool IsShowSoundEnabled();
 };

@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/rpc/CVehicleRPCs.cpp
  *  PURPOSE:     Vehicle remote procedure calls
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -52,6 +52,8 @@ void CVehicleRPCs::LoadFunctions()
     AddHandler(REMOVE_VEHICLE_SIRENS, RemoveVehicleSirens, "removeVehicleSirens");
     AddHandler(SET_VEHICLE_SIRENS, SetVehicleSirens, "setVehicleSirens");
     AddHandler(SET_VEHICLE_PLATE_TEXT, SetVehiclePlateText, "setVehiclePlateText");
+    AddHandler(SPAWN_VEHICLE_FLYING_COMPONENT, SpawnVehicleFlyingComponent, "spawnVehicleFlyingComponent");
+    AddHandler(SET_VEHICLE_NITRO_ACTIVATED, SetVehicleNitroActivated, "SetVehicleNitroActivated");
 }
 
 void CVehicleRPCs::DestroyAllVehicles(NetBitStreamInterface& bitStream)
@@ -78,17 +80,25 @@ void CVehicleRPCs::FixVehicle(CClientEntity* pSource, NetBitStreamInterface& bit
 
 void CVehicleRPCs::BlowVehicle(CClientEntity* pSource, NetBitStreamInterface& bitStream)
 {
-    // Read out the vehicle id
-    unsigned char ucTimeContext;
-    if (bitStream.Read(ucTimeContext))
+    unsigned char syncTimeContext;
+    bool          withExplosion = true;
+
+    if (bitStream.Read(syncTimeContext))
     {
-        // Grab the vehicle
-        CClientVehicle* pVehicle = m_pVehicleManager->Get(pSource->GetID());
-        if (pVehicle)
+        if (!bitStream.ReadBit(withExplosion))
         {
-            // Blow it and change the time context
-            pVehicle->Blow(true);
-            pVehicle->SetSyncTimeContext(ucTimeContext);
+            return;
+        }
+
+        CClientVehicle* vehicle = m_pVehicleManager->Get(pSource->GetID());
+
+        if (vehicle)
+        {
+            VehicleBlowFlags blow;
+            blow.withExplosion = withExplosion;
+            vehicle->Blow(blow);
+
+            vehicle->SetSyncTimeContext(syncTimeContext);
         }
     }
 }
@@ -309,11 +319,8 @@ void CVehicleRPCs::SetVehicleDamageState(CClientEntity* pSource, NetBitStreamInt
                     {
                         bool spawnFlyingComponent = true;
 
-                        if (bitStream.Can(eBitStreamVersion::SetVehicleDoorState_SpawnFlyingComponent))
-                        {
-                            if (!bitStream.ReadBit(spawnFlyingComponent))
-                                break;
-                        }
+                        if (!bitStream.ReadBit(spawnFlyingComponent))
+                            break;
 
                         pVehicle->SetDoorStatus(ucDoor, ucState, spawnFlyingComponent);
                     }
@@ -342,7 +349,12 @@ void CVehicleRPCs::SetVehicleDamageState(CClientEntity* pSource, NetBitStreamInt
                     unsigned char ucPanel, ucState;
                     if (bitStream.Read(ucPanel) && bitStream.Read(ucState))
                     {
-                        pVehicle->SetPanelStatus(ucPanel, ucState);
+                        bool spawnFlyingComponent = true;
+                        bool breakGlass = false;
+                        bitStream.ReadBit(spawnFlyingComponent);
+                        bitStream.ReadBit(breakGlass);
+
+                        pVehicle->SetPanelStatus(ucPanel, ucState, spawnFlyingComponent, breakGlass);
                     }
                 }
                 default:
@@ -438,7 +450,7 @@ void CVehicleRPCs::SetVehicleWheelStates(CClientEntity* pSource, NetBitStreamInt
         CClientVehicle* pVehicle = m_pVehicleManager->Get(pSource->GetID());
         if (pVehicle)
         {
-            for (int i = 0; i < MAX_WHEELS; i++)
+            for (unsigned char i = 0; i < MAX_WHEELS; i++)
                 pVehicle->SetWheelStatus(i, ucWheelStates[i], false);
         }
     }
@@ -645,3 +657,39 @@ void CVehicleRPCs::SetVehiclePlateText(CClientEntity* pSourceEntity, NetBitStrea
         }
     }
 }
+
+void CVehicleRPCs::SpawnVehicleFlyingComponent(CClientEntity* const sourceEntity, NetBitStreamInterface& bitStream)
+{
+    CClientVehicle* vehicle = m_pVehicleManager->Get(sourceEntity->GetID());
+    if (!vehicle)
+        return;
+
+    std::uint8_t nodeIndex, collisionType;
+    std::int32_t removalTime;
+
+    if (bitStream.Read(nodeIndex) && bitStream.Read(collisionType) && bitStream.Read(removalTime))
+        vehicle->SpawnFlyingComponent(static_cast<eCarNodes>(nodeIndex), static_cast<eCarComponentCollisionTypes>(collisionType), removalTime);
+}
+
+void CVehicleRPCs::SetVehicleNitroActivated(CClientEntity* pSourceEntity, NetBitStreamInterface& bitStream)
+{
+    bool state = bitStream.ReadBit();
+
+    CClientVehicle* vehicle = m_pVehicleManager->Get(pSourceEntity->GetID());
+    if (!vehicle)
+        return;          
+
+    if (!vehicle->IsNitroInstalled())
+        return;
+
+     // If nitro level < 0, nitro is activated. (until nitro level reaches -1, at that point it will become 0 and increase instead of decrease)
+    if ((vehicle->GetNitroLevel() < 0.0f) == state)
+        return;
+
+    // Apply nitro level change
+    if (state)
+        vehicle->SetNitroLevel(vehicle->GetNitroLevel() - 1.0001f);
+    else
+        vehicle->SetNitroLevel(vehicle->GetNitroLevel() + 1.0001f);
+}
+

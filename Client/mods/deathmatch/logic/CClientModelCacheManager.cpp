@@ -3,7 +3,7 @@
  *  PROJECT:     Multi Theft Auto v1.0
  *  LICENSE:     See LICENSE in the top level directory
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -38,6 +38,7 @@ public:
     // CClientModelCacheManager interface
     virtual void DoPulse();
     virtual void OnRestreamModel(ushort usModelId);
+    virtual void SetCustomLimits(const size_t* numVehicles, const size_t* numPeds);
 
     // CClientModelCacheManagerImpl methods
     CClientModelCacheManagerImpl();
@@ -138,7 +139,7 @@ void CClientModelCacheManagerImpl::DoPulse()
         DoPulseVehicleModels();
 
     // Handle regeneration of possibly replaced clothes textures
-    if (g_pGame->GetRenderWare()->HasClothesReplacementChanged())
+    if (g_pGame->GetRenderWare()->HasClothesReplacementChanged() || CClientPlayerClothes::HasClothesChanged())
     {
         g_pMultiplayer->FlushClothesCache();
 
@@ -246,7 +247,7 @@ void CClientModelCacheManagerImpl::ProcessPlayerList(std::map<ushort, float>& ou
         CClientPlayer* pPlayer = *iter;
         ushort         usModelId = (ushort)pPlayer->GetModel();
 
-        if (usModelId < 7 || usModelId > 312)
+        if (usModelId < 1 || usModelId > 312)
             continue;
 
         // Check if currently within distance
@@ -323,7 +324,7 @@ void CClientModelCacheManagerImpl::ProcessPedList(std::map<ushort, float>& outNe
         CClientPed*  pPed = *iter;
         const ushort usModelId = (ushort)pPed->GetModel();
 
-        if (usModelId < 7 || usModelId > 312)
+        if (usModelId < 1 || usModelId > 312)
             continue;
 
         // Check if currently within distance
@@ -517,4 +518,9 @@ void CClientModelCacheManagerImpl::AddProcessStat(const char* szTag, bool bCache
 void CClientModelCacheManagerImpl::OnRestreamModel(ushort usModelId)
 {
     m_pCoreModelCacheManager->OnRestreamModel(usModelId);
+}
+
+void CClientModelCacheManagerImpl::SetCustomLimits(const size_t* numVehicles, const size_t* numPeds)
+{
+    m_pCoreModelCacheManager->SetCustomLimits(numVehicles, numPeds);
 }

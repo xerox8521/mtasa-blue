@@ -5,7 +5,7 @@
  *  FILE:        mods/shared_logic/luadefs/CLuaPointLightDefs.cpp
  *  PURPOSE:     Lua point light definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -14,14 +14,8 @@
 void CLuaPointLightDefs::LoadFunctions()
 {
     constexpr static const std::pair<const char*, lua_CFunction> functions[]{
-        {"createLight", CreateLight},
-        {"getLightType", GetLightType},
-        {"getLightRadius", GetLightRadius},
-        {"setLightRadius", SetLightRadius},
-        {"getLightColor", GetLightColor},
-        {"setLightColor", SetLightColor},
-        {"getLightDirection", GetLightDirection},
-        {"setLightDirection", SetLightDirection},
+        {"createLight", CreateLight},     {"getLightType", GetLightType},   {"getLightRadius", GetLightRadius},       {"setLightRadius", SetLightRadius},
+        {"getLightColor", GetLightColor}, {"setLightColor", SetLightColor}, {"getLightDirection", GetLightDirection}, {"setLightDirection", SetLightDirection},
     };
 
     // Add functions

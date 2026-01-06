@@ -5,11 +5,12 @@
  *  FILE:        mods/deathmatch/Server.cpp
  *  PURPOSE:     Deathmatch module entry point
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CServer.h"
 
 CServer* g_pServer = NULL;
 

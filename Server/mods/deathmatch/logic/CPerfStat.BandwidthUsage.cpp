@@ -5,11 +5,17 @@
  *  FILE:        mods/deathmatch/logic/CPerfStat.BandwidthUsage.cpp
  *  PURPOSE:     Performance stats manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPerfStatManager.h"
+#include "CDatabaseManager.h"
+#include "CGame.h"
+#include "CMainConfig.h"
+#include "CRegistry.h"
+#include <net/ns_common.h>
 
 namespace
 {
@@ -620,7 +626,7 @@ void CPerfStatBandwidthUsageImpl::GetStats(CPerfStatResult* pResult, const std::
                     row[c++] = CPerfStatManager::GetScaledByteString(item.llGameRecv);
                     row[c++] = CPerfStatManager::GetScaledByteString(item.llGameSent);
                     if (bShowSentLoss[t])
-                        row[c++] = item.llGameResent ? CPerfStatManager::GetPercentString(item.llGameResent, item.llGameSent) : "";
+                        row[c++] = item.llGameResent ? CPerfStatManager::GetPercentString(item.llGameResent, item.llGameSent) : SStringX("");
                     row[c++] = CPerfStatManager::GetScaledByteString(item.llHttpSent);
                     if (bShowBlocked[t])
                         row[c++] = CPerfStatManager::GetScaledByteString(item.llGameRecvBlocked);

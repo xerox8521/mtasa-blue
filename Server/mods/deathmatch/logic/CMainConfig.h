@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CMainConfig.h
  *  PURPOSE:     XML-based main configuration file parser class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -20,7 +20,10 @@ class CMainConfig;
 #include <list>
 
 #define MAX_MAP_NAME_LENGTH 64
+
 class CMainConfig;
+class CCommandLineParser;
+class CLuaArguments;
 
 typedef void (CMainConfig::*PFN_SettingChangeCallback)();
 
@@ -84,6 +87,7 @@ public:
     unsigned int                GetScriptDebugLogLevel() { return m_uiScriptDebugLogLevel; };
     const std::string&          GetAccessControlListFile() { return m_strAccessControlListFile; };
     bool                        GetSerialVerificationEnabled() { return m_bVerifySerials; };
+    const std::map<SString, SString>& GetRulesForASE() const noexcept { return m_RulesForASEMap; };
     bool                        IsDisableAC(const char* szTagAC) { return MapContains(m_DisableComboACMap, szTagAC); };
     bool                        IsEnableDiagnostic(const char* szTag) { return MapContains(m_EnableDiagnosticMap, szTag); };
     CMtaVersion                 GetMinClientVersion() { return m_strMinClientVersion; }
@@ -98,8 +102,8 @@ public:
     int                         GetBackupAmount() { return m_iBackupAmount; }
     void                        NotifyDidBackup();
     bool                        ShouldCompactInternalDatabases();
-    unsigned short              GetFPSLimit() { return m_usFPSLimit; };
-    bool                        SetFPSLimit(unsigned short usFPS, bool bSave);
+    std::uint16_t               GetFPSLimit() const noexcept { return m_fpsLimit; };
+    bool                        SetFPSLimit(std::uint16_t fps, bool save);
     int                         GetPendingWorkToDoSleepTime();
     int                         GetNoWorkToDoSleepTime();
     int                         GetServerLogicFpsLimit() { return m_iServerLogicFpsLimit; };
@@ -123,6 +127,9 @@ public:
     const std::vector<SString>& GetOwnerEmailAddressList() const { return m_OwnerEmailAddressList; }
     bool                        IsDatabaseCredentialsProtectionEnabled() const { return m_bDatabaseCredentialsProtectionEnabled != 0; }
     bool                        IsFakeLagCommandEnabled() const { return m_bFakeLagCommandEnabled != 0; }
+    bool                        IsElementDataWhitelisted() const { return m_elementDataWhitelisted; }
+    bool                        IsCheckDuplicateSerialsEnabled() const noexcept { return m_checkDuplicateSerials; }
+    bool                        IsCheckResourceClientFilesEnabled() const noexcept { return m_checkResourceClientFiles != 0; }
 
     SString GetSetting(const SString& configSetting);
     bool    GetSetting(const SString& configSetting, SString& strValue);
@@ -139,6 +146,12 @@ public:
     const std::vector<SIntSetting>& GetIntSettingList();
     void                            OnTickRateChange();
     void                            OnAseSettingChange();
+    void                            OnPlayerTriggeredEventIntervalChange();
+    void                            OnAllowMultiCommandHandlersChange();
+
+    int GetPlayerTriggeredEventInterval() const { return m_iPlayerTriggeredEventIntervalMs; }
+    int GetMaxPlayerTriggeredEventsPerInterval() const { return m_iMaxPlayerTriggeredEventsPerInterval; }
+    int GetAllowMultiCommandHandlers() const noexcept { return m_allowMultiCommandHandlers; }
 
 private:
     void RegisterCommand(const char* szName, FCommandHandler* pFunction, bool bRestricted, const char* szConsoleHelpText);
@@ -180,9 +193,10 @@ private:
     unsigned int               m_uiScriptDebugLogLevel;
     std::string                m_strAccessControlListFile;
     bool                       m_bVerifySerials;
-    unsigned short             m_usFPSLimit;
+    std::uint16_t              m_fpsLimit;
     int                        m_bDontBroadcastLan;
     std::set<SString>          m_DisableComboACMap;
+    std::map<SString, SString> m_RulesForASEMap;
     std::set<SString>          m_EnableDiagnosticMap;
     std::vector<SString>       m_AuthSerialGroupList;
     bool                       m_bAuthSerialHttpEnabled;
@@ -218,4 +232,10 @@ private:
     int                        m_bFilterDuplicateLogLinesEnabled;
     int                        m_bDatabaseCredentialsProtectionEnabled;
     int                        m_bFakeLagCommandEnabled;
+    int                        m_iPlayerTriggeredEventIntervalMs;
+    int                        m_iMaxPlayerTriggeredEventsPerInterval;
+    bool                       m_elementDataWhitelisted;
+    bool                       m_checkDuplicateSerials;
+    int                        m_checkResourceClientFiles;
+    int                        m_allowMultiCommandHandlers;
 };

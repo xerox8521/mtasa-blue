@@ -5,11 +5,16 @@
  *  FILE:        mods/deathmatch/logic/CPed.cpp
  *  PURPOSE:     Ped entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPed.h"
+#include "CPedManager.h"
+#include "CLogger.h"
+#include "Utils.h"
+#include "CStaticFunctionDefinitions.h"
 
 char szBodyPartNameEmpty[] = "";
 struct SBodyPartName
@@ -33,7 +38,7 @@ CPed::CPed(CPedManager* pPedManager, CElement* pParent, unsigned short usModel) 
     m_bWearingGoggles = false;
 
     m_fHealth = 0.0f;
-    m_fArmor = 0.0f;
+    m_armor = 0.0f;
 
     memset(&m_fStats[0], 0, sizeof(m_fStats));
     m_fStats[24] = 569.0f;            // default max_health
@@ -75,6 +80,7 @@ CPed::CPed(CPedManager* pPedManager, CElement* pParent, unsigned short usModel) 
     m_bCollisionsEnabled = true;
 
     m_pJackingVehicle = NULL;
+    m_nearPlayersList.reserve(20);
 
     // Add us to the Ped manager
     if (pPedManager)
@@ -233,7 +239,7 @@ bool CPed::ReadSpecialData(const int iLine)
         m_fHealth = 100.0f;
 
     // Grab the "armor" data
-    GetCustomDataFloat("armor", m_fArmor, true);
+    GetCustomDataFloat("armor", m_armor, true);
 
     // Grab the "interior" data
     if (GetCustomDataInt("interior", iTemp, true))
@@ -350,16 +356,25 @@ void CPed::SetWeaponTotalAmmo(unsigned short usTotalAmmo, unsigned char ucSlot)
     }
 }
 
+bool CPed::HasWeaponType(unsigned char ucWeaponType)
+{
+    for (unsigned char slot = 0; slot < WEAPON_SLOTS; slot++)
+    {
+        if (GetWeaponType(slot) == ucWeaponType)
+            return true;
+    }
+
+    return false;
+}
+
 float CPed::GetMaxHealth()
 {
-    // TODO: Verify this formula
-
     // Grab his player health stat
     float fStat = GetPlayerStat(24 /*MAX_HEALTH*/);
 
     // Do a linear interpolation to get how much health this would allow
-    // Assumes: 100 health = 569 stat, 200 health = 1000 stat.
-    float fMaxHealth = 100.0f + (100.0f / 431.0f * (fStat - 569.0f));
+    // Assumes: 100 health = 569 stat, 176 health = 1000 stat.
+    float fMaxHealth = fStat * 0.176f;
 
     // Return the max health. Make sure it can't be below 1
     if (fMaxHealth < 1.0f)
@@ -462,22 +477,22 @@ void CPed::SetSyncer(CPlayer* pPlayer)
         {
             case VEHICLEACTION_ENTERING:
             {
-                CVehicle* pVehicle = GetOccupiedVehicle();
-                unsigned char ucOccupiedSeat = GetOccupiedVehicleSeat();
+                CVehicle*    pVehicle = GetOccupiedVehicle();
+                unsigned int occupiedSeat = GetOccupiedVehicleSeat();
                 // Does it have an occupant and is the occupant us?
-                if (pVehicle && (this == pVehicle->GetOccupant(ucOccupiedSeat)))
+                if (pVehicle && (this == pVehicle->GetOccupant(occupiedSeat)))
                 {
                     // Warp us into vehicle
-                    CStaticFunctionDefinitions::WarpPedIntoVehicle(this, pVehicle, ucOccupiedSeat);
+                    CStaticFunctionDefinitions::WarpPedIntoVehicle(this, pVehicle, occupiedSeat);
                 }
             }
 
             case VEHICLEACTION_EXITING:
             {
-                CVehicle* pVehicle = GetOccupiedVehicle();
-                unsigned char ucOccupiedSeat = GetOccupiedVehicleSeat();
+                CVehicle*    pVehicle = GetOccupiedVehicle();
+                unsigned int occupiedSeat = GetOccupiedVehicleSeat();
                 // Does it have an occupant and is the occupant us?
-                if (pVehicle && (this == pVehicle->GetOccupant(ucOccupiedSeat)))
+                if (pVehicle && (this == pVehicle->GetOccupant(occupiedSeat)))
                 {
                     // Warp us out of vehicle
                     CStaticFunctionDefinitions::RemovePedFromVehicle(this);
@@ -516,4 +531,26 @@ void CPed::SetJackingVehicle(CVehicle* pVehicle)
 
     if (m_pJackingVehicle)
         m_pJackingVehicle->SetJackingPed(this);
+}
+
+void CPed::SetHasJetPack(bool bHasJetPack)
+{
+    if (m_bHasJetPack == bHasJetPack)
+        return;
+
+    m_bHasJetPack = bHasJetPack;
+
+    if (!bHasJetPack)
+        return;
+
+    // Set weapon slot to 0 if weapon is disabled with jetpack to avoid HUD and audio bugs
+    eWeaponType weaponType = static_cast<eWeaponType>(GetWeaponType(GetWeaponSlot()));
+    if (weaponType <= WEAPONTYPE_UNARMED)
+        return;
+
+    bool weaponEnabled;
+    CStaticFunctionDefinitions::GetJetpackWeaponEnabled(weaponType, weaponEnabled);
+
+    if (!weaponEnabled)
+        CStaticFunctionDefinitions::SetPedWeaponSlot(this, 0);
 }

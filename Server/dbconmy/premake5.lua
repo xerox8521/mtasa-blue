@@ -38,26 +38,44 @@ project "Dbconmy"
 		links { "rt" }
 
 	filter "system:macosx"
-		includedirs { os.findheader("mysql.h", "/usr/local/opt/mysql/include/mysql") }
+		-- brew install mysql-client libidn2
+		includedirs {
+			os.findheader("mysql.h", {
+				"/usr/local/opt/mysql/include/mysql",
+				"/opt/homebrew/include/mysql",
+				"/opt/homebrew/opt/mysql-client/include/mysql",
+			})
+		}
+		libdirs {
+			os.findlib("libmysqlclient.a", {
+				"/usr/local/opt/mysql/lib",
+				"/opt/homebrew/lib",
+				"/opt/homebrew/opt/mysql-client/lib",
+			})
+		}
 
 	if GLIBC_COMPAT then
 		filter { "system:linux" }
 			buildoptions { "-pthread" }
-			linkoptions { "-l:libmysqlclient.a", "-pthread" }
-			links { "z", "dl", "m" }
+			linkoptions { "-pthread" }
+			links { "z", "dl", "m", "mysqlclient", "zstd", "ssl", "crypto", "resolv" }
 	else
 		filter "system:not windows"
 			links { "mysqlclient" }
-		filter {"system:linux", "platforms:x86"}
-			libdirs { "/usr/lib32/mysql" }
-		filter {"system:linux", "platforms:x64"}
-			libdirs { "/usr/lib64/mysql" }
 	end
 
 	filter { "system:windows", "platforms:x64" }
 		links { "../../vendor/mysql/lib/x64/libmysql.lib" }
 	filter { "system:windows", "platforms:x86" }
 		links { "../../vendor/mysql/lib/x86/libmysql.lib" }
+	filter { "system:windows", "platforms:arm64" }
+		links { "../../vendor/mysql/lib/arm64/libmysql.lib" }
 
 	filter "platforms:x64"
 		targetdir(buildpath("server/x64"))
+
+	filter "platforms:arm"
+		targetdir(buildpath("server/arm"))
+
+	filter "platforms:arm64"
+		targetdir(buildpath("server/arm64"))

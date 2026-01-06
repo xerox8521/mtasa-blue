@@ -5,7 +5,7 @@
  *  FILE:        game_sa/CPlayerPedSA.h
  *  PURPOSE:     Header file for player ped entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -28,10 +28,13 @@
 
 #define SIZEOF_CPLAYERPED               1956
 
-class CPlayerPedSAInterface : public CPedSAInterface            // CPlayerPed 1956 bytes in SA
+class CPlayerPedSAInterface : public CPedSAInterface
 {
 public:
+    CEntitySAInterface* mouseTargetEntity;
+    std::uint8_t        field_7A0[4];
 };
+static_assert(sizeof(CPlayerPedSAInterface) == 0x7A4, "Invalid size for CPlayerPedSAInterface");
 
 class CPlayerPedSA : public virtual CPlayerPed, public virtual CPedSA
 {
@@ -41,27 +44,21 @@ private:
     CWantedSA*                       m_pWanted;
 
 public:
-    CPlayerPedSA(ePedModel pedType);
+    CPlayerPedSA(unsigned int nModelIndex);
     CPlayerPedSA(CPlayerPedSAInterface* ped);
     ~CPlayerPedSA();
 
     CWanted* GetWanted();
-
-    float GetSprintEnergy();
-    void  SetSprintEnergy(float fSprintEnergy);
 
     void SetInitialState();
 
     eMoveAnim GetMoveAnim();
     void      SetMoveAnim(eMoveAnim iAnimGroup);
 
-    /*  DWORD               GetCurrentWeaponType        ( void );
-        DWORD               GetLastShotTime             ( void );
-        BOOL                IsStationaryOnFoot          ( void );
-        VOID                ResetToInitialState         ( void );
-        VOID                ClearWeaponTarget           ( void );*/
+    CEntity* GetTargetedEntity() const override;
+    void SetTargetedEntity(CEntity* targetEntity) override;
 
-    CPlayerPedSAInterface* GetPlayerPedInterface() { return static_cast<CPlayerPedSAInterface*>(m_pInterface); };
+    CPlayerPedSAInterface* GetPlayerPedInterface() const noexcept { return static_cast<CPlayerPedSAInterface*>(m_pInterface); };
 
     static void StaticSetHooks();
 };

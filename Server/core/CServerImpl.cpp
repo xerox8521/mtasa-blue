@@ -5,7 +5,7 @@
  *  FILE:        core/CServerImpl.cpp
  *  PURPOSE:     Server class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -13,6 +13,7 @@
 #include "CServerImpl.h"
 #include "CCrashHandler.h"
 #include "MTAPlatform.h"
+#include "version.h"
 #include "ErrorCodes.h"
 #include <clocale>
 #include <cstdio>
@@ -24,6 +25,9 @@
     #include <termios.h>
     #include <unistd.h>
 #endif
+
+void WaitForKey(int iKey);
+void Print(const char* szFormat, ...);
 
 // Define libraries
 char szNetworkLibName[] = "net" MTA_LIB_SUFFIX MTA_LIB_EXTENSION;
@@ -43,6 +47,9 @@ bool    IsCursesActive()
 {
     return m_wndInput != NULL;
 }
+#else
+bool g_isChildProcess = false;
+HANDLE g_readyEvent = nullptr;
 #endif
 
 #ifdef WIN32
@@ -53,7 +60,6 @@ CServerImpl::CServerImpl()
 {
     #ifdef WIN32
     m_pThreadCommandQueue = pThreadCommandQueue;
-    m_fClientFeedback = NULL;
     m_hConsole = NULL;
     #else
     m_wndMenu = NULL;
@@ -64,6 +70,7 @@ CServerImpl::CServerImpl()
     m_pNetwork = NULL;
     m_bRequestedQuit = false;
     m_bRequestedReset = false;
+    m_exitCode = ERROR_NO_ERROR;
     memset(&m_szInputBuffer, 0, sizeof(m_szInputBuffer));
     memset(&m_szTag, 0, sizeof(m_szTag) * sizeof(char));
     m_uiInputCount = 0;
@@ -117,17 +124,6 @@ void CServerImpl::Printf(const char* szFormat, ...)
 #endif
     }
 
-    // Eventually feed stuff back to our client if we run inside GTA
-    #ifdef WIN32
-    if (m_fClientFeedback)
-    {
-        char szOutput[512];
-        szOutput[511] = 0;
-        VSNPRINTF(szOutput, 511, szFormat, ap);
-        m_fClientFeedback(szOutput);
-    }
-    #endif
-
     va_end(ap);
 }
 
@@ -172,9 +168,7 @@ int CServerImpl::Run(int iArgumentCount, char* szArguments[])
     if (!ParseArguments(iArgumentCount, szArguments))
         return 1;
 
-#ifdef WIN32
-    if (!m_fClientFeedback)
-#else
+#ifndef WIN32
     if (!g_bNoCrashHandler)
 #endif
     {
@@ -201,9 +195,7 @@ int CServerImpl::Run(int iArgumentCount, char* szArguments[])
         m_hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
         m_hConsoleInput = GetStdHandle(STD_INPUT_HANDLE);
 
-        // If stdout is piped GetConsoleScreenBufferInfo will fail
-        // ==> check if stdin is piped
-        if (HasConsole())
+        if (!g_isChildProcess && HasConsole())
         {
             // Disable QuickEdit mode to prevent text selection causing server freeze
             DWORD dwConInMode;
@@ -236,7 +228,18 @@ int CServerImpl::Run(int iArgumentCount, char* szArguments[])
         {
             // Enable non-blocking read mode
             DWORD pipeState = PIPE_NOWAIT;
-            SetNamedPipeHandleState(GetStdHandle(STD_INPUT_HANDLE), &pipeState, nullptr, nullptr);
+            SetNamedPipeHandleState(m_hConsoleInput, &pipeState, nullptr, nullptr);
+        }
+
+        if (g_isChildProcess)
+        {
+            DWORD bytesRead{};
+
+            if (!ReadFile(m_hConsoleInput, &g_readyEvent, sizeof(HANDLE), &bytesRead, nullptr) || bytesRead != sizeof(HANDLE))
+            {
+                Print("ERROR: Failed to read ready-event handle from input (%08x)\n", GetLastError());
+                return ERROR_OTHER;
+            }
         }
 #else
         // support user locales
@@ -328,7 +331,8 @@ int CServerImpl::Run(int iArgumentCount, char* szArguments[])
     {
         // Network module compatibility check
         typedef unsigned long (*PFNCHECKCOMPATIBILITY)(unsigned long, unsigned long*);
-        PFNCHECKCOMPATIBILITY pfnCheckCompatibility = reinterpret_cast<PFNCHECKCOMPATIBILITY>(m_NetworkLibrary.GetProcedureAddress("CheckCompatibility"));
+        #pragma warning(suppress: 4191)
+        auto pfnCheckCompatibility = reinterpret_cast<PFNCHECKCOMPATIBILITY>(m_NetworkLibrary.GetProcedureAddress("CheckCompatibility"));
         if (!pfnCheckCompatibility || !pfnCheckCompatibility(MTA_DM_SERVER_NET_MODULE_VERSION, (unsigned long*)MTASA_VERSION_TYPE))
         {
             // net.dll doesn't like our version number
@@ -348,14 +352,19 @@ int CServerImpl::Run(int iArgumentCount, char* szArguments[])
 
         if (m_XMLLibrary.Load(PathJoin(m_strServerPath, SERVER_BIN_PATH, szXMLLibName)))
         {
-            // Grab the network interface
-            InitNetServerInterface pfnInitNetServerInterface = (InitNetServerInterface)(m_NetworkLibrary.GetProcedureAddress("InitNetServerInterface"));
-            InitXMLInterface       pfnInitXMLInterface = (InitXMLInterface)(m_XMLLibrary.GetProcedureAddress("InitXMLInterface"));
+            #pragma warning(push)
+            #pragma warning(disable: 4191)
+            auto pfnInitNetServerInterface = (InitNetServerInterface)(m_NetworkLibrary.GetProcedureAddress("InitNetServerInterface"));
+            auto pfnReleaseNetServerInterface = (ReleaseNetServerInterface)(m_NetworkLibrary.GetProcedureAddress("ReleaseNetServerInterface"));
+            auto pfnInitXMLInterface = (InitXMLInterface)(m_XMLLibrary.GetProcedureAddress("InitXMLInterface"));
+            #pragma warning(pop)
+
             if (pfnInitNetServerInterface && pfnInitXMLInterface)
             {
                 // Call it to grab the network interface class
                 m_pNetwork = pfnInitNetServerInterface();
                 m_pXML = pfnInitXMLInterface(*m_strServerModPath);
+
                 if (m_pNetwork && m_pXML)
                 {
                     // Make the modmanager load our mod
@@ -363,6 +372,9 @@ int CServerImpl::Run(int iArgumentCount, char* szArguments[])
                     {
                         // Enter our mainloop
                         MainLoop();
+
+                        if (pfnReleaseNetServerInterface)
+                            pfnReleaseNetServerInterface();
                     }
                     else
                     {
@@ -476,6 +488,15 @@ void CServerImpl::MainLoop()
 
         if (m_pModManager->IsFinished())
             m_bRequestedQuit = true;
+
+#ifdef WIN32
+        if (g_readyEvent != nullptr && m_pModManager->IsReadyToAcceptConnections())
+        {
+            SetEvent(g_readyEvent);
+            CloseHandle(g_readyEvent);
+            g_readyEvent = nullptr;
+        }
+#endif
 
         HandlePulseSleep();
     }
@@ -789,14 +810,16 @@ void CServerImpl::HandleInput()
                 }
                 else
                 {
-                    SString szCommand = UTF16ToMbUTF8(m_szInputBuffer).c_str();
                     // Otherwise, pass the command to the mod's input handler
-                    m_pModManager->HandleInput(szCommand);
+                    m_pModManager->HandleInput(UTF16ToMbUTF8(m_szInputBuffer).c_str());
 
                     // If the command is not empty and it isn't identical to the previous entry in history, add it to the history
                     // The first string is the original command, the second string is for storing the edited command
-                    if (!szCommand.empty() && (m_vecCommandHistory.empty() || m_vecCommandHistory.back()[0] != szCommand))
-                        m_vecCommandHistory.push_back({szCommand, szCommand});
+                    if (const std::wstring wzCommand = m_szInputBuffer;
+                        !wzCommand.empty() && (m_vecCommandHistory.empty() || m_vecCommandHistory.back()[0] != wzCommand))
+                    {
+                        m_vecCommandHistory.push_back({wzCommand, wzCommand});
+                    }
                 }
             }
 
@@ -814,7 +837,7 @@ void CServerImpl::HandleInput()
             if (m_uiInputCount == 0)
                 break;
 
-            // Insert a blank space + backspace
+                // Insert a blank space + backspace
 #ifdef WIN32
             Printf("%c %c", 0x08, 0x08);
 #else
@@ -851,8 +874,8 @@ void CServerImpl::HandleInput()
 
                     Printf("\r%s", UTF16ToMbUTF8(szBuffer).c_str());
 #else
-                    if (!g_bSilent && !g_bNoCurses)
-                        wmove(m_wndInput, 0, --m_uiInputCount);
+            if (!g_bSilent && !g_bNoCurses)
+                wmove(m_wndInput, 0, --m_uiInputCount);
 #endif
                     break;
                 }
@@ -872,8 +895,8 @@ void CServerImpl::HandleInput()
 
                     Printf("\r%s", UTF16ToMbUTF8(szBuffer).c_str());
 #else
-                    if (!g_bSilent && !g_bNoCurses)
-                        wmove(m_wndInput, 0, ++m_uiInputCount);
+            if (!g_bSilent && !g_bNoCurses)
+                wmove(m_wndInput, 0, ++m_uiInputCount);
 #endif
                     break;
                 }
@@ -957,20 +980,20 @@ void CServerImpl::SelectCommandHistoryEntry(uint uiEntry)
         m_uiSelectedCommandHistoryEntry = 0;
 
     // Save current input buffer to the command history entry as the second element
-    m_vecCommandHistory[uiPreviouslySelectedCommandHistoryEntry][1] = UTF16ToMbUTF8(m_szInputBuffer).c_str();
+    m_vecCommandHistory[uiPreviouslySelectedCommandHistoryEntry][1] = std::wstring(m_szInputBuffer);
 
     // Clear input
     ClearInput();
 
     // If the selected command is empty, let's just stop here
-    SString szInput = m_vecCommandHistory[m_uiSelectedCommandHistoryEntry][1];
-    if (szInput.empty())
+    const auto wzInput = m_vecCommandHistory[m_uiSelectedCommandHistoryEntry][1];
+    if (wzInput.empty())
         return;
 
     // Fill the input buffer
-    m_uiInputCount = szInput.length();
-    for (uint i = 0; i < szInput.length(); i++)
-        m_szInputBuffer[i] = szInput[i];
+    m_uiInputCount = wzInput.length();
+    for (uint i = 0; i < wzInput.length(); i++)
+        m_szInputBuffer[i] = wzInput[i];
 
     // Let's print it out
     wchar_t szBuffer[255] = {};
@@ -1064,16 +1087,6 @@ bool CServerImpl::ParseArguments(int iArgumentCount, char* szArguments[])
                 break;
             }
 
-            // Client feedback pointer?
-            #ifdef WIN32
-            case 'c':
-            {
-                m_fClientFeedback = reinterpret_cast<FClientFeedback*>(szArguments[i]);
-                ucNext = 0;
-                break;
-            }
-            #endif
-
             // Nothing we know, proceed
             default:
             {
@@ -1116,13 +1129,16 @@ bool CServerImpl::ParseArguments(int iArgumentCount, char* szArguments[])
                 {
                     g_bNoCrashHandler = true;
                 }
-
-                #ifdef WIN32
-                else if (strcmp(szArguments[i], "--clientfeedback") == 0)
+#ifdef WIN32
+                else if (!strcmp(szArguments[i], "--child-process"))
                 {
-                    ucNext = 'c';
+                    g_isChildProcess = true;
+                    g_bNoTopBar = true;
+                    g_bNoCurses = true;
+                    std::setbuf(stdout, nullptr);
+                    std::setbuf(stderr, nullptr);
                 }
-                #endif
+#endif
             }
         }
     }

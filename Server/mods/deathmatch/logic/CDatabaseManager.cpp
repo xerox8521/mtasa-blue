@@ -5,12 +5,18 @@
  *  FILE:        mods/deathmatch/logic/CDatabaseManager.cpp
  *  PURPOSE:     Outside world interface for enjoying asynchronous database functionality
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CDatabaseManager.h"
 #include "CDatabaseJobQueueManager.h"
+#include "lua/CLuaArguments.h"
+#include "CRegistry.h"
+#include "CIdArray.h"
+#include "CGame.h"
+
 SString InsertQueryArgumentsSqlite(const SString& strQuery, CLuaArguments* pArgs);
 SString InsertQueryArgumentsMySql(const SString& strQuery, CLuaArguments* pArgs);
 SString InsertQueryArgumentsSqlite(const char* szQuery, va_list vl);
@@ -579,7 +585,7 @@ SString CDatabaseManagerImpl::InsertQueryArguments(SConnectionHandle hConnection
 
     // Determine connection type
     SString* pstrType = MapFind(m_ConnectionTypeMap, hConnection);
-    SString  strType = pstrType ? *pstrType : "";
+    SString  strType = pstrType ? *pstrType : SStringX("");
 
     if (strType == "sqlite")
         return InsertQueryArgumentsSqlite(strQuery, pArgs);
@@ -602,7 +608,7 @@ SString CDatabaseManagerImpl::InsertQueryArguments(SConnectionHandle hConnection
 {
     // Determine connection type
     SString* pstrType = MapFind(m_ConnectionTypeMap, hConnection);
-    SString  strType = pstrType ? *pstrType : "";
+    SString  strType = pstrType ? *pstrType : SStringX("");
 
     if (strType == "sqlite")
         return InsertQueryArgumentsSqlite(szQuery, vl);
@@ -732,4 +738,14 @@ SString CDbJobData::GetCommandStringForLog()
         }
     }
     return command.strData;
+}
+
+///////////////////////////////////////////////////////////////
+//
+// CDatabaseConnectionElement::Unlink
+//
+///////////////////////////////////////////////////////////////
+void CDatabaseConnectionElement::Unlink()
+{
+    g_pGame->GetDatabaseManager()->Disconnect(m_Connection);
 }

@@ -24,6 +24,21 @@ CEffectCloner::CEffectCloner(CRenderItemManager* pManager)
     m_pManager = pManager;
 }
 
+CEffectCloner::~CEffectCloner()
+{
+    for (auto& entry : m_ValidMap)
+    {
+        SAFE_RELEASE(entry.second);
+    }
+    m_ValidMap.clear();
+
+    for (CEffectTemplate* pTemplate : m_OldList)
+    {
+        SAFE_RELEASE(pTemplate);
+    }
+    m_OldList.clear();
+}
+
 ////////////////////////////////////////////////////////////////
 //
 // CEffectCloner::CreateD3DEffect
@@ -31,13 +46,10 @@ CEffectCloner::CEffectCloner(CRenderItemManager* pManager)
 //
 //
 ////////////////////////////////////////////////////////////////
-CEffectWrap* CEffectCloner::CreateD3DEffect(const SString& strFile, const SString& strRootPath, bool bIsRawData, SString& strOutStatus,
-    bool bDebug, const EffectMacroList& macros)
+CEffectWrap* CEffectCloner::CreateD3DEffect(const SString& strFile, const SString& strRootPath, bool bIsRawData, SString& strOutStatus, bool bDebug,
+                                            const EffectMacroList& macros)
 {
-    SEffectInvariant invariant{
-        ConformPathForSorting(strFile),
-        macros
-    };
+    SEffectInvariant invariant{ConformPathForSorting(strFile), macros};
 
     // Do we have a match with the initial path
     CEffectTemplate* pEffectTemplate = MapFindRef(m_ValidMap, invariant);

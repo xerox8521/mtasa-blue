@@ -5,16 +5,19 @@
  *  FILE:        game_sa/CVisibilityPluginsSA.cpp
  *  PURPOSE:     RenderWare entity visibility plugin
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CVisibilityPluginsSA.h"
+
+#define FUNC_CVisibilityPlugins_InsertEntityIntoEntityList 0x733DD0
 
 void CVisibilityPluginsSA::SetClumpAlpha(RpClump* pClump, int iAlpha)
 {
     DWORD dwFunc = FUNC_CVisiblityPlugins_SetClumpAlpha;
-    _asm
+    __asm
     {
         push    iAlpha
         push    pClump
@@ -41,7 +44,7 @@ int CVisibilityPluginsSA::GetAtomicId(RwObject* pAtomic)
 {
     DWORD dwFunc = FUNC_CVisibilityPlugins_GetAtomicId;
     int   iResult = 0;
-    _asm
+    __asm
     {
         push    pAtomic
         call    dwFunc
@@ -49,4 +52,9 @@ int CVisibilityPluginsSA::GetAtomicId(RwObject* pAtomic)
         mov     iResult, eax
     }
     return iResult;
+}
+
+bool CVisibilityPluginsSA::InsertEntityIntoEntityList(void* entity, float distance, void* callback)
+{
+    return ((bool(_cdecl*)(void*, float, void*))FUNC_CVisibilityPlugins_InsertEntityIntoEntityList)(entity, distance, callback);
 }

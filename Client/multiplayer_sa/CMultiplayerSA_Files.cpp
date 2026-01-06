@@ -4,7 +4,7 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        multiplayer_sa/CMultiplayerSA_Files.cpp
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -45,16 +45,14 @@ void OnMY_Rtl_fopen_Post(FILE* fh, DWORD calledFrom, const char* szFilename, con
 }
 
 // Hook info
-#define HOOKPOS_Rtl_fopen_US                         0x8232D8
-#define HOOKSIZE_Rtl_fopen_US                        6
-#define HOOKPOS_Rtl_fopen_EU                         0x823318
-#define HOOKSIZE_Rtl_fopen_EU                        6
-DWORD RETURN_Rtl_fopen_US = 0x8232DE;
-DWORD RETURN_Rtl_fopen_EU = 0x82331E;
-DWORD RETURN_Rtl_fopen_BOTH = 0;
-void _declspec(naked) HOOK_Rtl_fopen()
+#define HOOKPOS_Rtl_fopen                            0x8232D8
+#define HOOKSIZE_Rtl_fopen                           6
+DWORD RETURN_Rtl_fopen = 0x8232DE;
+static void __declspec(naked) HOOK_Rtl_fopen()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         push    [esp+4*3]
         push    [esp+4*3]
@@ -75,7 +73,7 @@ void _declspec(naked) HOOK_Rtl_fopen()
 inner:
         push    40h
         push    [esp+0x0c]
-        jmp     RETURN_Rtl_fopen_BOTH
+        jmp     RETURN_Rtl_fopen
     }
 }
 
@@ -93,16 +91,14 @@ void OnMY_Rtl_fclose(DWORD calledFrom, FILE* fh)
 }
 
 // Hook info
-#define HOOKPOS_Rtl_fclose_US                         0x82318B
-#define HOOKSIZE_Rtl_fclose_US                        6
-#define HOOKPOS_Rtl_fclose_EU                         0x8231CB
-#define HOOKSIZE_Rtl_fclose_EU                        6
-DWORD RETURN_Rtl_fclose_US = 0x823192;
-DWORD RETURN_Rtl_fclose_EU = 0x8231D2;
-DWORD RETURN_Rtl_fclose_BOTH = 0;
-void _declspec(naked) HOOK_Rtl_fclose()
+#define HOOKPOS_Rtl_fclose                            0x82318B
+#define HOOKSIZE_Rtl_fclose                           6
+DWORD RETURN_Rtl_fclose = 0x823192;
+static void __declspec(naked) HOOK_Rtl_fclose()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         push    [esp+32+4*1]
@@ -113,7 +109,7 @@ void _declspec(naked) HOOK_Rtl_fclose()
 
         push    0Ch
         push    0x887EC8
-        jmp     RETURN_Rtl_fclose_BOTH
+        jmp     RETURN_Rtl_fclose
     }
 }
 

@@ -5,21 +5,21 @@
  *  FILE:        game_sa/CDamageManagerSA.cpp
  *  PURPOSE:     Vehicle damage manager
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CDamageManagerSA.h"
+#include "CAutomobileSA.h"
 
 BYTE CDamageManagerSA::GetEngineStatus()
 {
-    DEBUG_TRACE("BYTE CDamageManagerSA::GetEngineStatus (  )");
     return internalInterface->bEngineStatus;
 }
 
-VOID CDamageManagerSA::SetEngineStatus(BYTE bEngineState)
+void CDamageManagerSA::SetEngineStatus(BYTE bEngineState)
 {
-    DEBUG_TRACE("VOID CDamageManagerSA::SetEngineStatus ( BYTE bEngineState )");
     if (bEngineState > 250)
         bEngineState = 250;
     internalInterface->bEngineStatus = bEngineState;
@@ -27,16 +27,13 @@ VOID CDamageManagerSA::SetEngineStatus(BYTE bEngineState)
 
 BYTE CDamageManagerSA::GetDoorStatus(eDoors bDoor)
 {
-    DEBUG_TRACE("BYTE CDamageManagerSA::GetDoorStatus ( eDoors bDoor )");
     if (bDoor < MAX_DOORS)
         return internalInterface->Door[bDoor];
     return NULL;
 }
 
-VOID CDamageManagerSA::SetDoorStatus(eDoors bDoor, BYTE bDoorStatus, bool spawnFlyingComponent)
+void CDamageManagerSA::SetDoorStatus(eDoors bDoor, BYTE bDoorStatus, bool spawnFlyingComponent)
 {
-    DEBUG_TRACE("VOID CDamageManagerSA::SetDoorStatus ( eDoors bDoor, BYTE bDoorStatus, bool spawnFlyingComponent )");
-
     if (bDoor < MAX_DOORS)
     {
         // Different from before?
@@ -56,7 +53,7 @@ VOID CDamageManagerSA::SetDoorStatus(eDoors bDoor, BYTE bDoorStatus, bool spawnF
                 DWORD dwThis = (DWORD)internalEntityInterface;
                 int   iCarNodeIndex = s_iCarNodeIndexes[bDoor];
                 DWORD dwDoor = (DWORD)bDoor;
-                _asm
+                __asm
                 {
                     mov     ecx, dwThis
                     push    dwDoor
@@ -71,7 +68,7 @@ VOID CDamageManagerSA::SetDoorStatus(eDoors bDoor, BYTE bDoorStatus, bool spawnF
                 DWORD dwThis = (DWORD)internalEntityInterface;
                 DWORD dwDoor = (DWORD)bDoor;
                 bool  bQuiet = !spawnFlyingComponent;
-                _asm
+                __asm
                 {
                     mov     ecx, dwThis
                     push    bQuiet
@@ -85,15 +82,13 @@ VOID CDamageManagerSA::SetDoorStatus(eDoors bDoor, BYTE bDoorStatus, bool spawnF
 
 BYTE CDamageManagerSA::GetWheelStatus(eWheelPosition bWheel)
 {
-    DEBUG_TRACE("BYTE CDamageManagerSA::GetWheelStatus ( eWheelPosition bWheel )");
     if (bWheel < MAX_WHEELS)
         return internalInterface->Wheel[bWheel];
     return NULL;
 }
 
-VOID CDamageManagerSA::SetWheelStatus(eWheelPosition bWheel, BYTE bTireStatus)
+void CDamageManagerSA::SetWheelStatus(eWheelPosition bWheel, BYTE bTireStatus)
 {
-    DEBUG_TRACE("VOID CDamageManagerSA::SetWheelStatus ( eWheelPosition bWheel, BYTE bTireStatus )");
     if (bWheel < MAX_WHEELS)
     {
         // Different than before?
@@ -104,10 +99,8 @@ VOID CDamageManagerSA::SetWheelStatus(eWheelPosition bWheel, BYTE bTireStatus)
     }
 }
 
-VOID CDamageManagerSA::SetPanelStatus(BYTE bPanel, BYTE bPanelStatus)
+void CDamageManagerSA::SetPanelStatus(BYTE bPanel, BYTE bPanelStatus, bool spawnFlyingComponent, bool breakGlass)
 {
-    DEBUG_TRACE("BYTE CDamageManagerSA::SetPanelStatus ( BYTE bLight, BYTE bPanelStatus )");
-
     // Valid index?
     if (bPanel < MAX_PANELS && bPanelStatus <= 3)
     {
@@ -119,7 +112,7 @@ VOID CDamageManagerSA::SetPanelStatus(BYTE bPanel, BYTE bPanelStatus)
             DWORD dwThis = (DWORD)internalInterface;
             DWORD dwPanel = bPanel;
             DWORD dwStatus = bPanelStatus;
-            _asm
+            __asm
             {
                 mov     ecx, dwThis
                 push    dwStatus
@@ -130,71 +123,41 @@ VOID CDamageManagerSA::SetPanelStatus(BYTE bPanel, BYTE bPanelStatus)
             // Intact?
             if (bPanelStatus == DT_PANEL_INTACT)
             {
-                // Grab the car node index for the given panel
-                static int s_iCarNodeIndexes[7] = {0x0F, 0x0E, 0x00 /*?*/, 0x00 /*?*/, 0x12, 0x0C, 0x0D};
-
                 //  Call CAutomobile::FixPanel to update the vehicle
                 dwFunction = 0x6A3670;
                 dwThis = (DWORD)internalEntityInterface;
-                int iCarNodeIndex = s_iCarNodeIndexes[bPanel];
-                _asm
+                int carNodeIndex = GetCarNodeIndexFromPanel(bPanel);
+                if (carNodeIndex < 0)
+                    return;
+
+                __asm
                 {
                     mov     ecx, dwThis
                     push    dwPanel
-                    push    iCarNodeIndex
+                    push    carNodeIndex
                     call    dwFunction
                 }
             }
             else
-            {
-                // Call CAutomobile::SetPanelDamage to update the vehicle
-                dwFunction = 0x6B1480;
-                dwThis = (DWORD)internalEntityInterface;
-                bool bUnknown = false;
-                _asm
-                {
-                    mov     ecx, dwThis
-                    push    bUnknown
-                    push    dwPanel
-                    call    dwFunction
-                }
-            }
+                reinterpret_cast<CAutomobileSAInterface*>(internalEntityInterface)->SetPanelDamage(bPanel, breakGlass, spawnFlyingComponent);
         }
     }
 }
 
-void CDamageManagerSA::SetPanelStatus(unsigned long ulStatus)
+void CDamageManagerSA::SetPanelStatus(unsigned long ulStatus, bool spawnFlyingComponent, bool breakGlass)
 {
     unsigned int uiIndex;
 
     for (uiIndex = 0; uiIndex < MAX_PANELS; uiIndex++)
     {
-        SetPanelStatus(static_cast<eDoors>(uiIndex), static_cast<unsigned char>(ulStatus));
+        SetPanelStatus(static_cast<eDoors>(uiIndex), static_cast<unsigned char>(ulStatus), spawnFlyingComponent, breakGlass);
         ulStatus >>= 4;
     }
 }
 
-BYTE CDamageManagerSA::GetPanelStatus(BYTE bPanel)
+BYTE CDamageManagerSA::GetPanelStatus(BYTE bPanel) const
 {
-    if (bPanel < MAX_PANELS)
-    {
-        DEBUG_TRACE("BYTE CDamageManagerSA::GetPanelStatus ( BYTE bPannel )");
-        DWORD dwFunction = FUNC_GetPanelStatus;
-        DWORD dwPointer = (DWORD)internalInterface;
-        BYTE  bReturn = 0;
-        DWORD dwPanel = bPanel;
-        _asm
-        {
-            mov     ecx, dwPointer
-            push    dwPanel
-            call    dwFunction
-            mov     bReturn, al
-        }
-
-        return bReturn;
-    }
-
-    return 0;
+    return internalInterface->GetPanelStatus(bPanel);
 }
 
 unsigned long CDamageManagerSA::GetPanelStatus()
@@ -202,14 +165,13 @@ unsigned long CDamageManagerSA::GetPanelStatus()
     return internalInterface->Panels;
 }
 
-VOID CDamageManagerSA::SetLightStatus(BYTE bLight, BYTE bLightStatus)
+void CDamageManagerSA::SetLightStatus(BYTE bLight, BYTE bLightStatus)
 {
-    DEBUG_TRACE("BYTE CDamageManagerSA::SetLightStatus ( BYTE bLight, BYTE bLightStatus )");
     DWORD dwFunction = FUNC_SetLightStatus;
     DWORD dwPointer = (DWORD)internalInterface;
     DWORD dwLight = bLight;
     DWORD dwStatus = bLightStatus;
-    _asm
+    __asm
     {
         mov     ecx, dwPointer
         push    dwStatus
@@ -225,12 +187,11 @@ void CDamageManagerSA::SetLightStatus(unsigned char ucStatus)
 
 BYTE CDamageManagerSA::GetLightStatus(BYTE bLight)
 {
-    DEBUG_TRACE("BYTE CDamageManagerSA::GetLightStatus ( BYTE bLight )");
     DWORD dwFunction = FUNC_GetLightStatus;
     DWORD dwPointer = (DWORD)internalInterface;
     BYTE  bReturn = 0;
     DWORD dwLight = bLight;
-    _asm
+    __asm
     {
         mov     ecx, dwPointer
         push    dwLight
@@ -245,13 +206,12 @@ unsigned char CDamageManagerSA::GetLightStatus()
     return static_cast<unsigned char>(internalInterface->Lights);
 }
 
-VOID CDamageManagerSA::SetAeroplaneCompStatus(BYTE CompID, BYTE Status)
+void CDamageManagerSA::SetAeroplaneCompStatus(BYTE CompID, BYTE Status)
 {
-    DEBUG_TRACE("VOID CDamageManagerSA::SetAeroplaneCompStatus( BYTE CompID, BYTE Status)");
     DWORD dwFunction = FUNC_SetAeroplaneCompStatus;
     DWORD dwPointer = (DWORD)internalInterface;
     DWORD dwPannel = CompID;
-    _asm
+    __asm
     {
         mov     ecx, dwPointer
         push    Status
@@ -262,12 +222,11 @@ VOID CDamageManagerSA::SetAeroplaneCompStatus(BYTE CompID, BYTE Status)
 
 BYTE CDamageManagerSA::GetAeroplaneCompStatus(BYTE CompID)
 {
-    DEBUG_TRACE("BYTE CDamageManagerSA::GetAeroplaneCompStatus( BYTE CompID )");
     DWORD dwFunction = FUNC_GetAeroplaneCompStatus;
     DWORD dwPointer = (DWORD)internalInterface;
     BYTE  bReturn = 0;
     DWORD dwPannel = CompID;
-    _asm
+    __asm
     {
         mov     ecx, dwPointer
         push    dwPannel
@@ -277,15 +236,40 @@ BYTE CDamageManagerSA::GetAeroplaneCompStatus(BYTE CompID)
     return bReturn;
 }
 
-VOID CDamageManagerSA::FuckCarCompletely(BOOL bKeepWheels)
+void CDamageManagerSA::FuckCarCompletely(bool bKeepWheels)
 {
-    DEBUG_TRACE("VOID CDamageManagerSA::FuckCarCompletely ( BOOL bKeepWheels )");
     DWORD dwFunc = FUNC_FuckCarCompletely;
     DWORD dwPointer = (DWORD)internalInterface;
-    _asm
+    __asm
     {
         mov     ecx, dwPointer
         push    bKeepWheels
         call    dwFunc
     }
+}
+
+int CDamageManagerSA::GetCarNodeIndexFromPanel(std::uint8_t panelId) noexcept
+{
+    int index = -1;
+
+    switch (panelId)
+    {
+        case 0:
+            index = 15; // PANEL_WING_LF
+            break;
+        case 1:
+            index = 14; // PANEL_WING_RF
+            break;
+        case 4:
+            index = 18; // PANEL_WINDSCREEN
+            break;
+        case 5:
+            index = 12; // BUMP_FRONT
+            break;
+        case 6:
+            index = 13; // BUMP_REAR
+            break;
+    }
+
+    return index;
 }

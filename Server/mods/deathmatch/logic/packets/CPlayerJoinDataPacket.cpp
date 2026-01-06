@@ -5,11 +5,12 @@
  *  FILE:        mods/deathmatch/logic/packets/CPlayerJoinDataPacket.cpp
  *  PURPOSE:     Player join data packet class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPlayerJoinDataPacket.h"
 
 bool CPlayerJoinDataPacket::Read(NetBitStreamInterface& BitStream)
 {
@@ -25,19 +26,12 @@ bool CPlayerJoinDataPacket::Read(NetBitStreamInterface& BitStream)
     m_bOptionalUpdateInfoRequired = BitStream.ReadBit();
 
     if (BitStream.Read(m_ucGameVersion) && BitStream.ReadStringCharacters(m_strNick, MAX_PLAYER_NICK_LENGTH) &&
-        BitStream.Read(reinterpret_cast<char*>(&m_Password), 16) && BitStream.ReadStringCharacters(m_strSerialUser, MAX_SERIAL_LENGTH))
+        BitStream.Read(reinterpret_cast<char*>(&m_Password), 16))
     {
         // Shrink string sizes to fit
         m_strNick = *m_strNick;
-        m_strSerialUser = *m_strSerialUser;
-
-        if (static_cast<eBitStreamVersion>(m_usBitStreamVersion) >= eBitStreamVersion::Discord_InitialImplementation)
-        {
-            if (!BitStream.ReadString<uchar>(m_strDiscordSecret))
-                return false;
-        }
-
         return true;
     }
+
     return false;
 }

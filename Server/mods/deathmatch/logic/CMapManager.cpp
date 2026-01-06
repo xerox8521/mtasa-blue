@@ -5,18 +5,35 @@
  *  FILE:        mods/deathmatch/logic/CMapManager.cpp
  *  PURPOSE:     Map manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CMapManager.h"
+#include "CPedManager.h"
+#include "CWaterManager.h"
+#include "CPlayerManager.h"
+#include "CMarkerManager.h"
+#include "CWater.h"
+#include "CMarker.h"
+#include "CBlip.h"
+#include "CGame.h"
+#include "CMainConfig.h"
+#include "CResource.h"
+#include "CPerfStatManager.h"
+#include "lua/CLuaFunctionParseHelpers.h"
+#include "packets/CEntityAddPacket.h"
+#include "packets/CPlayerSpawnPacket.h"
+#include "packets/CPickupHideShowPacket.h"
+#include "packets/CVehicleSpawnPacket.h"
 
 extern CGame* g_pGame;
 
 CMapManager::CMapManager(CBlipManager* pBlipManager, CObjectManager* pObjectManager, CPickupManager* pPickupManager, CPlayerManager* pPlayerManager,
                          CRadarAreaManager* pRadarAreaManager, CMarkerManager* pMarkerManager, CVehicleManager* pVehicleManager, CTeamManager* pTeamManager,
-                         CPedManager* pPedManager, CColManager* pColManager, CWaterManager* pWaterManager, CClock* pClock,
-                         CGroups* pGroups, CEvents* pEvents, class CScriptDebugging* pScriptDebugging, CElementDeleter* pElementDeleter)
+                         CPedManager* pPedManager, CColManager* pColManager, CWaterManager* pWaterManager, CClock* pClock, CGroups* pGroups, CEvents* pEvents,
+                         class CScriptDebugging* pScriptDebugging, CElementDeleter* pElementDeleter)
 {
     // Init
     m_pBlipManager = pBlipManager;
@@ -456,7 +473,7 @@ void CMapManager::OnPlayerJoin(CPlayer& Player)
     unsigned char ucBlendedWeatherHour = m_pBlendedWeather->GetBlendedStopHour();
 
     // FPS Limit
-    unsigned short usFPSLimit = g_pGame->GetConfig()->GetFPSLimit();
+    std::uint16_t fps = g_pGame->GetConfig()->GetFPSLimit();
 
     // Garage states
     const SGarageStates& garageStates = g_pGame->GetGarageStates();
@@ -507,7 +524,7 @@ void CMapManager::OnPlayerJoin(CPlayer& Player)
     // Send the packet to the given player
     Player.Send(CMapInfoPacket(ucCurrentWeather, ucWeatherBlendingTo, ucBlendedWeatherHour, ucClockHour, ucClockMin, ulMinuteDuration, bNametagsEnabled,
                                bRadarEnabled, fGravity, fGameSpeed, fWaveHeight, worldWaterLevelInfo, bHasSkyGradient, garageStates, ucTopRed, ucTopGreen,
-                               ucTopBlue, ucBottomRed, ucBottomGreen, ucBottomBlue, bHasHeatHaze, heatHazeSettings, usFPSLimit, bCloudsEnabled,
+                               ucTopBlue, ucBottomRed, ucBottomGreen, ucBottomBlue, bHasHeatHaze, heatHazeSettings, fps, bCloudsEnabled,
                                fJetpackMaxHeight, bOverrideWaterColor, ucWaterRed, ucWaterGreen, ucWaterBlue, ucWaterAlpha, bInteriorSoundsEnabled,
                                bOverrideRainLevel, fRainLevel, bOverrideSunSize, fSunSize, bOverrideSunColor, ucCoreR, ucCoreG, ucCoreB, ucCoronaR, ucCoronaG,
                                ucCoronaB, bOverrideWindVelocity, fWindVelX, fWindVelY, fWindVelZ, bOverrideFarClipDistance, fFarClip, bOverrideFogDistance,
@@ -576,6 +593,7 @@ void CMapManager::SpawnPlayer(CPlayer& Player, const CVector& vecPosition, float
 
     // Update the player data
     Player.SetSpawned(true);
+    Player.SetTeleported(true);
     Player.SetHealth(Player.GetMaxHealth());
     Player.SetIsDead(false);
     Player.SetWearingGoggles(false);

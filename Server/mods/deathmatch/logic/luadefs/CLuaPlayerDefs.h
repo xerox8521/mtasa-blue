@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/luadefs/CLuaFileDefs.h
  *  PURPOSE:     Lua player definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -61,7 +61,6 @@ public:
     LUA_DECLARE(SetPlayerNametagShowing);
     LUA_DECLARE(SetPlayerMuted);
     LUA_DECLARE(SetPlayerBlurLevel);
-    LUA_DECLARE(SetPlayerDiscordJoinParams);
     LUA_DECLARE(RedirectPlayer);
     LUA_DECLARE(SetPlayerName);
     LUA_DECLARE(DetonateSatchels);
@@ -97,7 +96,7 @@ public:
     LUA_DECLARE(ShowCursor);
 
     // Chat funcs
-    LUA_DECLARE(ShowChat);
+    static bool ShowChat(CElement* pPlayer, bool bShow, std::optional<bool> optInputBlocked);
 
     // Admin funcs
     LUA_DECLARE(KickPlayer);

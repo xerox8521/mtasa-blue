@@ -18,6 +18,9 @@
 #include <bassmix.h>
 #include <basswma.h>
 #include <bass_fx.h>
+#include <atomic>
+#include <condition_variable>
+#include <chrono>
 
 void CALLBACK BPMCallback(int handle, float bpm, void* user);
 void CALLBACK BeatCallback(DWORD chan, double beatpos, void* user);
@@ -30,38 +33,61 @@ namespace
     // Use ids instead of points for callback arguments,
     // as it's easier to identify an invalid id
     //
-    CCriticalSection             ms_CallbackCS;
+    std::mutex                   ms_CallbackMutex;
     std::map<void*, CBassAudio*> ms_CallbackIdMap;
     uint                         ms_uiNextCallbackId = 1;
+
+    // Track failed audio file loads to prevent spam and performance hit
+    std::mutex                         ms_FailedFilesMutex;
+    std::unordered_map<SString, DWORD> ms_FailedAudioFiles;
+    constexpr DWORD FAILED_LOAD_RETRY_DELAY = 10000;            // 10 seconds before retrying a failed file
+    constexpr size_t MAX_FAILED_FILES_CACHE_SIZE = 1000;
+
+    // Track active streaming threads to ensure they complete before DLL unload
+    std::atomic<int> ms_iActiveStreamingThreads{0};
+    std::atomic<bool> ms_bShuttingDown{false};
+    std::mutex ms_StreamingThreadMutex;
+    std::condition_variable ms_StreamingThreadCV;
 
     // Get callback id for this CBassAudio
     void* AddCallbackId(CBassAudio* pBassAudio)
     {
-        ms_CallbackCS.Lock();
+        std::lock_guard<std::mutex> lock(ms_CallbackMutex);
         void* uiId = (void*)(++ms_uiNextCallbackId ? ms_uiNextCallbackId : ++ms_uiNextCallbackId);
         MapSet(ms_CallbackIdMap, uiId, pBassAudio);
-        ms_CallbackCS.Unlock();
         return uiId;
     }
 
     // Mark callback id as no longer valid
     void RemoveCallbackId(void* uiId)
     {
-        ms_CallbackCS.Lock();
+        std::lock_guard<std::mutex> lock(ms_CallbackMutex);
         MapRemove(ms_CallbackIdMap, uiId);
-        ms_CallbackCS.Unlock();
     }
 
-    // Get pointer from id
+    // Get pointer from id (caller must hold lock)
     CBassAudio* LockCallbackId(void* uiId)
     {
-        ms_CallbackCS.Lock();
+        ms_CallbackMutex.lock();
         return MapFindRef(ms_CallbackIdMap, uiId);
     }
 
     // Finish with pointer
-    void UnlockCallbackId() { ms_CallbackCS.Unlock(); }
+    void UnlockCallbackId() { ms_CallbackMutex.unlock(); }
 }            // namespace
+
+// Signal streaming threads that we're shutting down - they should exit ASAP after their blocking call returns
+void SignalStreamingThreadsToStop()
+{
+    ms_bShuttingDown.store(true);
+}
+
+// Wait for all active streaming threads to complete (called during shutdown after BASS is freed)
+void WaitForAllStreamingThreads(unsigned int uiTimeoutMs)
+{
+    std::unique_lock<std::mutex> lock(ms_StreamingThreadMutex);
+    ms_StreamingThreadCV.wait_for(lock, std::chrono::milliseconds(uiTimeoutMs), []() { return ms_iActiveStreamingThreads.load() == 0; });
+}
 
 CBassAudio::CBassAudio(bool bStream, const SString& strPath, bool bLoop, bool bThrottle, bool b3D)
     : m_bStream(bStream), m_strPath(strPath), m_bLoop(bLoop), m_bThrottle(bThrottle), m_b3D(b3D)
@@ -153,7 +179,16 @@ bool CBassAudio::BeginLoadingMedia()
         m_pVars = new SSoundThreadVariables();
         m_pVars->strURL = m_strPath;
         m_pVars->lFlags = lFlags;
-        CreateThread(NULL, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(&CBassAudio::PlayStreamIntern), m_uiCallbackId, 0, NULL);
+        HANDLE hThread = CreateThread(NULL, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(&CBassAudio::PlayStreamIntern), m_uiCallbackId, 0, NULL);
+        if (!hThread)
+        {
+            g_pCore->GetConsole()->Printf("Could not create audio stream thread for %s", *m_strPath);
+            delete m_pVars;
+            m_pVars = nullptr;
+            return false;
+        }
+
+        CloseHandle(hThread);
         m_bPendingPlay = true;
         OutputDebugLine("[Bass]        stream connect started");
     }
@@ -162,6 +197,25 @@ bool CBassAudio::BeginLoadingMedia()
         //
         // For non streams, try to load the sound file
         //
+        // Check if this file has recently failed to load (file-based only, not buffers)
+        const DWORD dwCurrentTime = GetTickCount32();
+        if (!m_pBuffer)
+        {
+            std::lock_guard<std::mutex> lock(ms_FailedFilesMutex);
+            const auto it = ms_FailedAudioFiles.find(m_strPath);
+            if (it != ms_FailedAudioFiles.end())
+            {
+                const DWORD dwTimeSinceFailure = dwCurrentTime - it->second;
+                if (dwTimeSinceFailure < FAILED_LOAD_RETRY_DELAY)
+                {
+                    // File failed recently, don't spam it
+                    return false;
+                }
+                // Enough time has passed, remove from failed list and try again
+                ms_FailedAudioFiles.erase(it);
+            }
+        }
+
         // First x streams need to be decoders rather than "real" sounds but that's dependent on if we need streams or not so we need to adapt.
         /*
             We are the Borg. Lower your shields and surrender your ships.
@@ -178,7 +232,26 @@ bool CBassAudio::BeginLoadingMedia()
                 m_pSound = BASS_MusicLoad(false, FromUTF8(m_strPath), 0, 0, BASS_MUSIC_RAMP | BASS_MUSIC_PRESCAN | BASS_STREAM_DECODE | BASS_UNICODE,
                                           0);            // Try again
             if (!m_pSound && m_b3D)
-                m_pSound = ConvertFileToMono(m_strPath);            // Last try if 3D
+            {
+                // Last try if 3D - check cache first to avoid spammed mono conversion attempts
+                bool bShouldTry = false;
+                {
+                    std::lock_guard<std::mutex> lock(ms_FailedFilesMutex);
+                    const auto it = ms_FailedAudioFiles.find(m_strPath);
+                    if (it == ms_FailedAudioFiles.end() || (dwCurrentTime - it->second) >= FAILED_LOAD_RETRY_DELAY)
+                    {
+                        bShouldTry = true;
+                        // Mark as failed/in-progress immediately
+                        // and to ensure failure is cached if ConvertFileToMono fails
+                        ms_FailedAudioFiles[m_strPath] = dwCurrentTime;
+                    }
+                }
+                
+                if (bShouldTry)
+                {
+                    m_pSound = ConvertFileToMono(m_strPath);
+                }
+            }
         }
         else
         {
@@ -190,11 +263,50 @@ bool CBassAudio::BeginLoadingMedia()
         // Failed to load ?
         if (!m_pSound)
         {
-            g_pCore->GetConsole()->Printf("BASS ERROR %d in LoadMedia  path:%s  3d:%d  loop:%d", BASS_ErrorGetCode(), *m_strPath, m_b3D, m_bLoop);
+            const int nErrorCode = BASS_ErrorGetCode();
+            // Only cache file-not-found errors to prevent spam
+            if (!m_pBuffer && nErrorCode == BASS_ERROR_FILEOPEN)
+            {
+                std::lock_guard<std::mutex> lock(ms_FailedFilesMutex);
+                if (ms_FailedAudioFiles.size() >= MAX_FAILED_FILES_CACHE_SIZE)
+                {
+                    // Remove oldest entry
+                    DWORD maxAge = 0;
+                    auto itOldest = ms_FailedAudioFiles.begin();
+                    for (auto it = ms_FailedAudioFiles.begin(); it != ms_FailedAudioFiles.end(); ++it)
+                    {
+                        // Find oldest entry
+                        DWORD age = dwCurrentTime - it->second;
+                        if (age > maxAge)
+                        {
+                            maxAge = age;
+                            itOldest = it;
+                        }
+                    }
+                    ms_FailedAudioFiles.erase(itOldest);
+                }
+                ms_FailedAudioFiles[m_strPath] = dwCurrentTime;
+            }
+            g_pCore->GetConsole()->Printf("BASS ERROR %d in LoadMedia  path:%s  3d:%d  loop:%d", nErrorCode, *m_strPath, m_b3D, m_bLoop);
             return false;
         }
 
-        m_pSound = BASS_FX_ReverseCreate(m_pSound, 2.0f, BASS_STREAM_DECODE | BASS_FX_FREESOURCE | BASS_MUSIC_PRESCAN);
+        // Successfully loaded - remove from failed cache if it was there
+        if (!m_pBuffer)
+        {
+            std::lock_guard<std::mutex> lock(ms_FailedFilesMutex);
+            ms_FailedAudioFiles.erase(m_strPath);
+        }
+
+        HSTREAM pReversed = BASS_FX_ReverseCreate(m_pSound, 2.0f, BASS_STREAM_DECODE | BASS_FX_FREESOURCE | BASS_MUSIC_PRESCAN);
+        if (!pReversed)
+        {
+            g_pCore->GetConsole()->Printf("BASS ERROR %d in BASS_FX_ReverseCreate  path:%s  3d:%d  loop:%d", BASS_ErrorGetCode(), *m_strPath, m_b3D, m_bLoop);
+            BASS_StreamFree(m_pSound);
+            m_pSound = 0;
+            return false;
+        }
+        m_pSound = pReversed;
         BASS_ChannelSetAttribute(m_pSound, BASS_ATTRIB_REVERSE_DIR, BASS_FX_RVS_FORWARD);
         // Sucks.
         /*if ( BASS_FX_BPM_CallbackSet ( m_pSound, (BPMPROC*)&BPMCallback, 1, 0, 0, m_uiCallbackId ) == false )
@@ -207,12 +319,6 @@ bool CBassAudio::BeginLoadingMedia()
         {
             g_pCore->GetConsole()->Printf("BASS ERROR %d in BASS_FX_BPM_BeatCallbackSet  path:%s  3d:%d  loop:%d", BASS_ErrorGetCode(), *m_strPath, m_b3D,
                                           m_bLoop);
-        }
-
-        if (!m_pSound)
-        {
-            g_pCore->GetConsole()->Printf("BASS ERROR %d in BASS_FX_ReverseCreate  path:%s  3d:%d  loop:%d", BASS_ErrorGetCode(), *m_strPath, m_b3D, m_bLoop);
-            return false;
         }
         m_pSound = BASS_FX_TempoCreate(m_pSound, lFlags | BASS_FX_FREESOURCE);
         if (!m_pSound)
@@ -237,6 +343,110 @@ bool CBassAudio::BeginLoadingMedia()
     return true;
 }
 
+const char* CBassAudio::ErrorGetMessage()
+{
+    // As BASS has no function to retrieve the error messages we must do it manually
+    // So this should be kept updated
+    // Error messages copied directly from BASS
+    switch (ErrorGetCode())
+    {
+        case BASS_OK:
+            return "all is OK";
+        case BASS_ERROR_MEM:
+            return "memory error";
+        case BASS_ERROR_FILEOPEN:
+            return "can't open the file";
+        case BASS_ERROR_DRIVER:
+            return "can't find a free/valid driver";
+        case BASS_ERROR_BUFLOST:
+            return "the sample buffer was lost";
+        case BASS_ERROR_HANDLE:
+            return "invalid handle";
+        case BASS_ERROR_FORMAT:
+            return "unsupported sample format";
+        case BASS_ERROR_POSITION:
+            return "invalid position";
+        case BASS_ERROR_INIT:
+            return "BASS_Init has not been successfully called";
+        case BASS_ERROR_START:
+            return "BASS_Start has not been successfully called";
+        case BASS_ERROR_SSL:
+            return "SSL/HTTPS support isn't available";
+        case BASS_ERROR_REINIT:
+            return "device needs to be reinitialized";
+        case BASS_ERROR_ALREADY:
+            return "already initialized/paused/whatever";
+        case BASS_ERROR_NOTAUDIO:
+            return "file does not contain audio";
+        case BASS_ERROR_NOCHAN:
+            return "can't get a free channel";
+        case BASS_ERROR_ILLTYPE:
+            return "an illegal type was specified";
+        case BASS_ERROR_ILLPARAM:
+            return "an illegal parameter was specified";
+        case BASS_ERROR_NO3D:
+            return "no 3D support";
+        case BASS_ERROR_NOEAX:
+            return "no EAX support";
+        case BASS_ERROR_DEVICE:
+            return "illegal device number";
+        case BASS_ERROR_NOPLAY:
+            return "not playing";
+        case BASS_ERROR_FREQ:
+            return "illegal sample rate";
+        case BASS_ERROR_NOTFILE:
+            return "the stream is not a file stream";
+        case BASS_ERROR_NOHW:
+            return "no hardware voices available";
+        case BASS_ERROR_EMPTY:
+            return "the file has no sample data";
+        case BASS_ERROR_NONET:
+            return "no internet connection could be opened";
+        case BASS_ERROR_CREATE:
+            return "couldn't create the file";
+        case BASS_ERROR_NOFX:
+            return "effects are not available";
+        case BASS_ERROR_NOTAVAIL:
+            return "requested data/action is not available";
+        case BASS_ERROR_DECODE:
+            return "the channel is/isn't a \"decoding channel\"";
+        case BASS_ERROR_DX:
+            return "a sufficient DirectX version is not installed";
+        case BASS_ERROR_TIMEOUT:
+            return "connection timedout";
+        case BASS_ERROR_FILEFORM:
+            return "unsupported file format";
+        case BASS_ERROR_SPEAKER:
+            return "unavailable speaker";
+        case BASS_ERROR_VERSION:
+            return "invalid BASS version (used by add-ons)";
+        case BASS_ERROR_CODEC:
+            return "codec is not available/supported";
+        case BASS_ERROR_ENDED:
+            return "the channel/file has ended";
+        case BASS_ERROR_BUSY:
+            return "the device is busy";
+        case BASS_ERROR_UNSTREAMABLE:
+            return "unstreamable file";
+        case BASS_ERROR_PROTOCOL:
+            return "unsupported protocol";
+        case BASS_ERROR_DENIED:
+            return "access denied";
+        case BASS_ERROR_UNKNOWN:
+            return "some other mystery problem";
+
+        // BASS may add new error codes in the future, which must be appended to the switch above.
+        // Also, add-ons may introduce additional error codes.
+        default:
+            return "unknown error (?)";
+    }
+}
+
+int CBassAudio::ErrorGetCode()
+{
+    return BASS_ErrorGetCode();
+}
+
 //
 // Util use in BeginLoadingMedia
 //
@@ -246,21 +456,79 @@ HSTREAM CBassAudio::ConvertFileToMono(const SString& strPath)
         BASS_StreamCreateFile(false, FromUTF8(strPath), 0, 0, BASS_STREAM_DECODE | BASS_SAMPLE_MONO | BASS_UNICODE);            // open file for decoding
     if (!decoder)
         return 0;                                                                                           // failed
-    DWORD            length = static_cast<DWORD>(BASS_ChannelGetLength(decoder, BASS_POS_BYTE));            // get the length
-    void*            data = malloc(length);                                                                 // allocate buffer for decoded data
+    
+    QWORD lengthQW = BASS_ChannelGetLength(decoder, BASS_POS_BYTE);
+    if (lengthQW == static_cast<QWORD>(-1) || lengthQW == 0)
+    {
+        BASS_StreamFree(decoder);
+        return 0;                                                                                           // invalid length
+    }
+    
+    if (lengthQW > 0xFFFFFFFF)
+    {
+        BASS_StreamFree(decoder);
+        return 0;                                                                                           // file too large for mono conversion
+    }
+    
+    DWORD length = static_cast<DWORD>(lengthQW);            // Safe cast after validation
+    void* data = malloc(length);                            // allocate buffer for decoded data
+    if (!data)
+    {
+        BASS_StreamFree(decoder);
+        return 0;                                                                                           // allocation failed
+    }
+    
     BASS_CHANNELINFO ci;
-    BASS_ChannelGetInfo(decoder, &ci);            // get sample format
+    if (!BASS_ChannelGetInfo(decoder, &ci))            // get sample format
+    {
+        free(data);
+        BASS_StreamFree(decoder);
+        return 0;                                                                                           // failed to get channel info
+    }
+    
     if (ci.chans > 1)                             // not mono, downmix...
     {
         HSTREAM mixer = BASS_Mixer_StreamCreate(ci.freq, 1, BASS_STREAM_DECODE | BASS_MIXER_END);            // create mono mixer
-        BASS_Mixer_StreamAddChannel(
-            mixer, decoder, BASS_MIXER_DOWNMIX | BASS_MIXER_NORAMPIN | BASS_STREAM_AUTOFREE);            // plug-in the decoder (auto-free with the mixer)
+        if (!mixer)
+        {
+            free(data);
+            BASS_StreamFree(decoder);
+            return 0;                                                                                       // mixer creation failed
+        }
+        if (!BASS_Mixer_StreamAddChannel(
+            mixer, decoder, BASS_MIXER_DOWNMIX | BASS_MIXER_NORAMPIN | BASS_STREAM_AUTOFREE))            // plug-in the decoder (auto-free with the mixer)
+        {
+            free(data);
+            BASS_StreamFree(mixer);
+            BASS_StreamFree(decoder);
+            return 0;                                                                                       // failed to add channel
+        }
         decoder = mixer;                                                                                 // decode from the mixer
     }
-    length = BASS_ChannelGetData(decoder, data, length);                                                    // decode data
+    
+    DWORD decodedLength = BASS_ChannelGetData(decoder, data, length);                                    // decode data
     BASS_StreamFree(decoder);                                                                               // free the decoder/mixer
+    
+    if (decodedLength == static_cast<DWORD>(-1))
+    {
+        free(data);
+        return 0;                                                                                           // decode failed
+    }
+    
     HSTREAM stream = BASS_StreamCreate(ci.freq, 1, BASS_STREAM_AUTOFREE, STREAMPROC_PUSH, NULL);            // create stream
-    BASS_StreamPutData(stream, data, length);                                                               // set the stream data
+    if (!stream)
+    {
+        free(data);
+        return 0;                                                                                           // stream creation failed
+    }
+    
+    if (!BASS_StreamPutData(stream, data, decodedLength))                                                   // set the stream data
+    {
+        free(data);
+        BASS_StreamFree(stream);
+        return 0;                                                                                           // failed to put data
+    }
+    
     free(data);                                                                                             // free the buffer
     return stream;
 }
@@ -343,6 +611,19 @@ void CALLBACK BeatCallback(DWORD chan, double beatpos, void* user)
 
 DWORD CBassAudio::PlayStreamIntern(LPVOID argument)
 {
+    // Track this thread so DLL unload can wait for it.
+    // This needs be incremented at the very start and decremented at the very end
+    // to ensure the main thread waits for it before unloading the DLL.
+    ++ms_iActiveStreamingThreads;
+
+    // Check if we're already shutting down
+    if (ms_bShuttingDown.load())
+    {
+        --ms_iActiveStreamingThreads;
+        ms_StreamingThreadCV.notify_all();
+        return 0;
+    }
+
     CBassAudio* pBassAudio = LockCallbackId(argument);
     if (pBassAudio)
     {
@@ -352,26 +633,43 @@ DWORD CBassAudio::PlayStreamIntern(LPVOID argument)
         pBassAudio->m_pVars->criticalSection.Unlock();
         UnlockCallbackId();
 
-        // This can take a while
+        // This can take a long time (30+ seconds on slow/failing connections).
+        // The main thread will wait for it with WaitForAllStreamingThreads().
         HSTREAM pSound = BASS_StreamCreateURL(FromUTF8(strURL), 0, lFlags | BASS_UNICODE, NULL, NULL);
 
-        CBassAudio* pBassAudio = LockCallbackId(argument);
-        if (pBassAudio)
+        // After BASS_StreamCreateURL returns, minimize work before decrementing counter.
+        // If shutting down, skip all processing and exit quickly - BASS is already freed
+        // So we shouldnt call any BASS functions or access game objects.
+        if (!ms_bShuttingDown.load())
         {
-            pBassAudio->m_pVars->criticalSection.Lock();
-            pBassAudio->m_pVars->bStreamCreateResult = true;
-            pBassAudio->m_pVars->pSound = pSound;
-            pBassAudio->m_pVars->criticalSection.Unlock();
+            CBassAudio* pBassAudio = LockCallbackId(argument);
+            if (pBassAudio)
+            {
+                pBassAudio->m_pVars->criticalSection.Lock();
+                pBassAudio->m_pVars->bStreamCreateResult = true;
+                pBassAudio->m_pVars->pSound = pSound;
+                pBassAudio->m_pVars->criticalSection.Unlock();
+            }
+            else if (pSound)
+            {
+                // Deal with unwanted pSound unless we're disconnecting already
+                if (g_pClientGame != nullptr && !g_pClientGame->IsBeingDeleted())
+                    g_pClientGame->GetManager()->GetSoundManager()->QueueChannelStop(pSound);
+            }
+            UnlockCallbackId();
         }
-        else
-        {
-            // Deal with unwanted pSound unless we're disconnecting already
-            if (g_pClientGame != nullptr && !g_pClientGame->IsBeingDeleted())
-                g_pClientGame->GetManager()->GetSoundManager()->QueueChannelStop(pSound);
-        }
+        // If shutting down: BASS is already freed, so pSound is invalid - just discard it.
+        // Do NOT call BASS_StreamFree or any BASS API here.
+    }
+    else
+    {
+        UnlockCallbackId();
     }
 
-    UnlockCallbackId();
+    // Signal that this thread is done - this allows WaitForAllStreamingThreads to return
+    --ms_iActiveStreamingThreads;
+    ms_StreamingThreadCV.notify_all();
+
     return 0;
 }
 
@@ -528,9 +826,12 @@ bool CBassAudio::SetPlayPosition(double dPosition)
     // Only relevant for non-streams, which are always ready if valid
     if (m_pSound)
     {
+        QWORD byteLength = BASS_ChannelGetLength(m_pSound, BASS_POS_BYTE);
+        if (byteLength == static_cast<QWORD>(-1) || byteLength == 0)
+            return false;
+        
         // Make sure position is in range
         QWORD bytePosition = BASS_ChannelSeconds2Bytes(m_pSound, dPosition);
-        QWORD byteLength = BASS_ChannelGetLength(m_pSound, BASS_POS_BYTE);
         return BASS_ChannelSetPosition(m_pSound, Clamp<QWORD>(0, bytePosition, byteLength - 1), BASS_POS_BYTE);
     }
     return false;
@@ -776,6 +1077,21 @@ float CBassAudio::GetSoundBPM()
 {
     if (m_fBPM == 0.0f && !m_bStream)
     {
+        // Check failed cache before trying
+        const DWORD dwCurrentTime = GetTickCount32();
+        {
+            std::lock_guard<std::mutex> lock(ms_FailedFilesMutex);
+            const auto it = ms_FailedAudioFiles.find(m_strPath);
+            if (it != ms_FailedAudioFiles.end())
+            {
+                const DWORD dwTimeSinceFailure = dwCurrentTime - it->second;
+                if (dwTimeSinceFailure < FAILED_LOAD_RETRY_DELAY)
+                {
+                    return 0.0f;            // File failed recently, don't retry
+                }
+            }
+        }
+        
         float fData = 0.0f;
 
         // open the same file as played but for bpm decoding detection
@@ -794,6 +1110,11 @@ float CBassAudio::GetSoundBPM()
 
         if (BASS_ErrorGetCode() != BASS_OK)
         {
+            // Cache the failure to prevent repeated perf hits
+            {
+                std::lock_guard<std::mutex> lock(ms_FailedFilesMutex);
+                ms_FailedAudioFiles[m_strPath] = dwCurrentTime;
+            }
             g_pCore->GetConsole()->Printf("BASS ERROR %d in BASS_FX_BPM_DecodeGet  path:%s  3d:%d  loop:%d", BASS_ErrorGetCode(), *m_strPath, m_b3D, m_bLoop);
         }
         else
@@ -841,6 +1162,16 @@ void CBassAudio::ApplyFxEffects()
             m_FxEffects[i] = 0;
         }
     }
+}
+
+BOOL CBassAudio::SetFxParameters(uint iFxEffect, void* params)
+{
+    return BASS_FXSetParameters(m_FxEffects[iFxEffect], params);
+}
+
+BOOL CBassAudio::GetFxParameters(uint iFxEffect, void* params)
+{
+    return BASS_FXGetParameters(m_FxEffects[iFxEffect], params);
 }
 
 //

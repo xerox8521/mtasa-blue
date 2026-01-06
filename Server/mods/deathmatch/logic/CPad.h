@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CPad.h
  *  PURPOSE:     Game controller pad class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -52,14 +52,14 @@ public:
     signed short m_bRadioTrackSkip;
 
     // Sync'd keys
-    bool LeftShoulder1;
-    bool RightShoulder1;
+    bool  LeftShoulder1;
+    bool  RightShoulder1;
     short ButtonSquare;
     short ButtonCross;
-    bool ButtonCircle;
-    bool ButtonTriangle;
-    bool ShockButtonL;
-    bool m_bPedWalk;
+    bool  ButtonCircle;
+    bool  ButtonTriangle;
+    bool  ShockButtonL;
+    bool  m_bPedWalk;
 
     CControllerState() { memset(this, 0, sizeof(CControllerState)); }
     void Copy(const CControllerState& State) { memcpy(this, &State, sizeof(CControllerState)); }

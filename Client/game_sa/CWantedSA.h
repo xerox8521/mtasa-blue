@@ -5,17 +5,15 @@
  *  FILE:        game_sa/CWantedSA.h
  *  PURPOSE:     Header file for wanted level management
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include "Common.h"
-#include <game/CWanted.h>
 #include <CVector.h>
+#include <game/Common.h>
+#include <game/CWanted.h>
 
 class CPedSAInterface;
 
@@ -23,9 +21,6 @@ class CPedSAInterface;
 #define FUNC_SetWantedLevel             0x562470
 #define FUNC_SetWantedLevelNoDrop       0x562570
 
-/**
- * \todo Fill with accessor functions and a constructor
- */
 #define MAX_CRIMES_QD       16
 #define MAX_COPS_PURSUIT    10
 
@@ -48,7 +43,7 @@ public:
     DWORD m_LastTimeWantedDecreased;
     DWORD m_LastTimeWantedLevelChanged;
     DWORD m_TimeOfParole;
-    FLOAT m_fMultiplier;            // New crimes have their wanted level contribution multiplied by this
+    float m_fMultiplier;            // New crimes have their wanted level contribution multiplied by this
     BYTE  m_nCopsInPursuit;
     BYTE  m_nMaxCopsInPursuit;
     BYTE  m_nMaxCopCarsInPursuit;
@@ -65,8 +60,8 @@ public:
     DWORD current_chase_time_counter;
     bool  m_bTimeCounting;
 
-    eWantedLevelSA m_WantedLevel;
-    eWantedLevelSA m_WantedLevelBeforeParole;
+    std::uint32_t m_WantedLevel;
+    std::uint32_t m_WantedLevelBeforeParole;
 
     CCrimeBeingQd CrimesBeingQd[MAX_CRIMES_QD];
 
@@ -87,14 +82,12 @@ public:
     ~CWantedSA();
 
     // Internal game_sa accessors
-    CWantedSAInterface* GetInterface() { return this->internalInterface; }
+    CWantedSAInterface* GetInterface() { return internalInterface; }
     bool                GetDontDelete() { return m_bDontDelete; };
     void                SetDontDelete(bool bDontDelete) { m_bDontDelete = bDontDelete; };
 
     // Exported methods
-    void SetMaximumWantedLevel(DWORD dwWantedLevel);
     void SetWantedLevel(DWORD dwWantedLevel);
     void SetWantedLevelNoFlash(DWORD dwWantedLevel);
-    char GetWantedLevel() { return this->internalInterface->m_WantedLevel; };
-    void SetWantedLevelNoDrop(DWORD dwWantedLevel);
+    char GetWantedLevel() { return static_cast<char>(internalInterface->m_WantedLevel); };
 };

@@ -5,11 +5,12 @@
  *  FILE:        game_sa/CAEAudioHardwareSA.cpp
  *  PURPOSE:     Audio hardware
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CAEAudioHardwareSA.h"
 
 CAEAudioHardwareSA::CAEAudioHardwareSA(CAEAudioHardwareSAInterface* pInterface)
 {
@@ -23,7 +24,7 @@ bool CAEAudioHardwareSA::IsSoundBankLoaded(short wSoundBankID, short wSoundBankS
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAEAudioHardware__IsSoundBankLoaded;
     bool  bReturn = false;
-    _asm
+    __asm
     {
         push    dwSoundBankSlotID
         push    dwSoundBankID
@@ -40,7 +41,7 @@ void CAEAudioHardwareSA::LoadSoundBank(short wSoundBankID, short wSoundBankSlotI
     DWORD dwSoundBankSlotID = wSoundBankSlotID;
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAEAudioHardware__LoadSoundBank;
-    _asm
+    __asm
     {
         push    dwSoundBankSlotID
         push    dwSoundBankID

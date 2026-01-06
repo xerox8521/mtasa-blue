@@ -5,11 +5,13 @@
  *  FILE:        Shared/mods/logic/lua/CLuaMatrix.cpp
  *  PURPOSE:     Lua matrix class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
-#include <StdInc.h>
+#include "StdInc.h"
+#include "CLuaMatrix.h"
+#include "CIdArray.h"
 
 CLuaMatrix::CLuaMatrix() : CMatrix()
 {

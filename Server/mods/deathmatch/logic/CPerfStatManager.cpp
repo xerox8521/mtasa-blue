@@ -5,11 +5,13 @@
  *  FILE:        mods/deathmatch/logic/CPerfStatManager.cpp
  *  PURPOSE:     Performance stats manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPerfStatManager.h"
+#include "CGame.h"
 
 std::unique_ptr<SStatData> g_pStats(new SStatData());
 

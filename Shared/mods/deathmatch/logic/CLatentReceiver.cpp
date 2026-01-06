@@ -4,11 +4,13 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLatentTransferManager.h"
+
 using namespace LatentTransfer;
 
 ///////////////////////////////////////////////////////////////
@@ -62,6 +64,15 @@ void CLatentReceiver::OnReceiveError(const SString& strMessage)
 ///////////////////////////////////////////////////////////////
 void CLatentReceiver::OnReceive(NetBitStreamInterface* pBitStream)
 {
+    struct SScopedGuardInsideMark
+    {
+        explicit SScopedGuardInsideMark(CLatentReceiver* pReceiver) noexcept : m_pReceiver(pReceiver) { pReceiver->m_bInside = true; }
+        ~SScopedGuardInsideMark() noexcept { m_pReceiver->m_bInside = false; }
+
+    private:
+        CLatentReceiver* m_pReceiver;
+    } const ScopedInsideMark(this);
+
     //
     // Read header
     //
@@ -86,8 +97,7 @@ void CLatentReceiver::OnReceive(NetBitStreamInterface* pBitStream)
             pBitStream->Read(usCategory);
             pBitStream->Read(uiFinalSize);
             pBitStream->Read(uiRate);
-            if (pBitStream->Version() >= 0x31)
-                pBitStream->Read(usResourceNetId);
+            pBitStream->Read(usResourceNetId);
         }
         else if (ucSpecialFlag == FLAG_TAIL)
         {

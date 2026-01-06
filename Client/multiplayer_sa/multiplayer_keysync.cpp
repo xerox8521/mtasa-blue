@@ -5,18 +5,13 @@
  *  FILE:        multiplayer_sa/multiplayer_keysync.cpp
  *  PURPOSE:     Multiplayer module keysync methods
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
-#define MULTIPLAYER_STATS
 
-// These includes have to be fixed!
-#include "../game_sa/CPlayerInfoSA.h"
-#include "../game_sa/CPedSA.h"
-#include "../game_sa/CVehicleSA.h"
-#include "../game_sa/CPadSA.h"
+#include <game/CWeaponStatManager.h>
 
 extern CMultiplayerSA* pMultiplayer;
 
@@ -27,13 +22,6 @@ DWORD dwParameter = 0;
 
 BOOL bRadioHackInstalled = FALSE;
 bool b1stPersonWeaponModeHackInPlace = false;
-
-/*
-GTA_CONTROLSET RemotePlayerKeys[MAX_PEDS];
-GTA_CONTROLSET SavedLocalPlayerKeys;
-GTA_CONTROLSET *LocalPlayerKeys = (GTA_CONTROLSET *)VAR_Keystates;
-*/
-
 bool bNotInLocalContext = false;
 bool bMouseLookEnabled = true;
 bool bInfraredVisionEnabled = false;
@@ -62,7 +50,6 @@ VOID InitKeysyncHooks()
     HookInstallMethod(VTBL_CTrain__ProcessControl, (DWORD)HOOK_CTrain__ProcessControl);
     HookInstallMethod(VTBL_CBoat__ProcessControl, (DWORD)HOOK_CBoat__ProcessControl);
     HookInstallMethod(VTBL_CBike__ProcessControl, (DWORD)HOOK_CBike__ProcessControl);
-    HookInstallMethod(VTBL_CHeli__ProcessControl, (DWORD)HOOK_CHeli__ProcessControl);
     HookInstallMethod(VTBL_CHeli__ProcessControl, (DWORD)HOOK_CHeli__ProcessControl);
 
     // not strictly for keysync, to make CPlayerPed::GetPlayerInfoForThisPlayerPed always return the local playerinfo
@@ -94,7 +81,7 @@ void         PostContextSwitch()
     MemPutFast<BYTE>(0x50BFB1, 0x8B);
     MemPutFast<BYTE>(0x50BFB2, 0x44);
 
-    // This is so weapon clicks and similar don't play for us when done remotly
+    // This is so weapon clicks and similar don't play for us when done remotely
     MemPutFast<BYTE>(0x60F273, 0x75);
     MemPutFast<BYTE>(0x60F260, 0x74);
     MemPutFast<BYTE>(0x60F261, 0x13);
@@ -314,8 +301,7 @@ void SwitchContext(CPed* thePed)
                     pGameInterface->SetGravity(data->m_fGravity);
 
                     // Disable mouselook for remote players (so the mouse doesn't affect them)
-                    // Only disable mouselook if they're not holding a 1st-person weapon
-                    // And if they're not under-water
+                    // Disable mouselook if they're not holding a 1st-person weapon
                     bool bDisableMouseLook = true;
                     if (pWeapon)
                     {
@@ -325,6 +311,15 @@ void SwitchContext(CPed* thePed)
                             bDisableMouseLook = false;
                         }
                     }
+
+                    // Disable mouse look if they're not in a fight task and not aiming (strafing)
+                    // Fix GitHub Issue #395
+                    if (thePed->GetCurrentWeaponSlot() == eWeaponSlot::WEAPONSLOT_TYPE_UNARMED && data->m_pad.NewState.RightShoulder1 != 0 && thePed->GetPedIntelligence()->GetFightTask())
+                        bDisableMouseLook = false;
+
+                    // Disable mouse look if they're not underwater (Ped vertical rotation when diving)
+                    // TODO - After merge PR #4401
+
                     bMouseLookEnabled = *(bool*)0xB6EC2E;
                     if (bDisableMouseLook)
                         *(bool*)0xB6EC2E = false;
@@ -346,7 +341,7 @@ void SwitchContext(CPed* thePed)
                     //*(BYTE *)0x73811C = 0x90;
                     //*(BYTE *)0x73811D = 0xE9;
 
-                    // This is so weapon clicks and similar don't play for us when done remotly
+                    // This is so weapon clicks and similar don't play for us when done remotely
                     MemPutFast<BYTE>(0x60F273, 0xEB);
                     MemPutFast<BYTE>(0x60F260, 0x90);
                     MemPutFast<BYTE>(0x60F261, 0x90);
@@ -514,10 +509,12 @@ struct CSavedRegs
 };
 static CSavedRegs PlayerPed__ProcessControl_Saved;
 
-VOID _declspec(naked) HOOK_CPlayerPed__ProcessControl()
+static void __declspec(naked) HOOK_CPlayerPed__ProcessControl()
 {
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
     // Assumes no reentrancy
-    _asm
+    __asm
     {
         mov     dwCurrentPlayerPed, ecx
 
@@ -535,7 +532,7 @@ VOID _declspec(naked) HOOK_CPlayerPed__ProcessControl()
 
     SwitchContext((CPedSAInterface*)dwCurrentPlayerPed);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CPlayerPed__ProcessControl
@@ -545,16 +542,18 @@ VOID _declspec(naked) HOOK_CPlayerPed__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
     }
 }
 
-void _declspec(naked) CPlayerPed__ProcessControl_Abort()
+static void __declspec(naked) CPlayerPed__ProcessControl_Abort()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         // restore stuff
         mov     eax, PlayerPed__ProcessControl_Saved.eax
@@ -570,7 +569,7 @@ void _declspec(naked) CPlayerPed__ProcessControl_Abort()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -579,9 +578,11 @@ void _declspec(naked) CPlayerPed__ProcessControl_Abort()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CAutomobile__ProcessControl()
+static void __declspec(naked) HOOK_CAutomobile__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -589,7 +590,7 @@ VOID _declspec(naked) HOOK_CAutomobile__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CAutomobile__ProcessControl
@@ -599,7 +600,7 @@ VOID _declspec(naked) HOOK_CAutomobile__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -608,9 +609,11 @@ VOID _declspec(naked) HOOK_CAutomobile__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CMonsterTruck__ProcessControl()
+static void __declspec(naked) HOOK_CMonsterTruck__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -618,7 +621,7 @@ VOID _declspec(naked) HOOK_CMonsterTruck__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CMonsterTruck__ProcessControl
@@ -628,7 +631,7 @@ VOID _declspec(naked) HOOK_CMonsterTruck__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -637,9 +640,11 @@ VOID _declspec(naked) HOOK_CMonsterTruck__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CTrailer__ProcessControl()
+static void __declspec(naked) HOOK_CTrailer__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -647,7 +652,7 @@ VOID _declspec(naked) HOOK_CTrailer__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CTrailer__ProcessControl
@@ -657,7 +662,7 @@ VOID _declspec(naked) HOOK_CTrailer__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -666,9 +671,11 @@ VOID _declspec(naked) HOOK_CTrailer__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CQuadBike__ProcessControl()
+static void __declspec(naked) HOOK_CQuadBike__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -676,7 +683,7 @@ VOID _declspec(naked) HOOK_CQuadBike__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CQuadBike__ProcessControl
@@ -686,7 +693,7 @@ VOID _declspec(naked) HOOK_CQuadBike__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -695,9 +702,11 @@ VOID _declspec(naked) HOOK_CQuadBike__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CPlane__ProcessControl()
+static void __declspec(naked) HOOK_CPlane__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -705,7 +714,7 @@ VOID _declspec(naked) HOOK_CPlane__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CPlane__ProcessControl
@@ -715,7 +724,7 @@ VOID _declspec(naked) HOOK_CPlane__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -724,9 +733,11 @@ VOID _declspec(naked) HOOK_CPlane__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CBmx__ProcessControl()
+static void __declspec(naked) HOOK_CBmx__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -734,7 +745,7 @@ VOID _declspec(naked) HOOK_CBmx__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CBmx__ProcessControl
@@ -744,7 +755,7 @@ VOID _declspec(naked) HOOK_CBmx__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -753,9 +764,11 @@ VOID _declspec(naked) HOOK_CBmx__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CTrain__ProcessControl()
+static void __declspec(naked) HOOK_CTrain__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -763,7 +776,7 @@ VOID _declspec(naked) HOOK_CTrain__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CTrain__ProcessControl
@@ -773,7 +786,7 @@ VOID _declspec(naked) HOOK_CTrain__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -782,9 +795,11 @@ VOID _declspec(naked) HOOK_CTrain__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CBoat__ProcessControl()
+static void __declspec(naked) HOOK_CBoat__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -792,7 +807,7 @@ VOID _declspec(naked) HOOK_CBoat__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CBoat__ProcessControl
@@ -802,7 +817,7 @@ VOID _declspec(naked) HOOK_CBoat__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -811,9 +826,11 @@ VOID _declspec(naked) HOOK_CBoat__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CBike__ProcessControl()
+static void __declspec(naked) HOOK_CBike__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -821,7 +838,7 @@ VOID _declspec(naked) HOOK_CBike__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CBike__ProcessControl
@@ -831,7 +848,7 @@ VOID _declspec(naked) HOOK_CBike__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn
@@ -840,9 +857,11 @@ VOID _declspec(naked) HOOK_CBike__ProcessControl()
 
 //--------------------------------------------------------------------------------------------
 
-VOID _declspec(naked) HOOK_CHeli__ProcessControl()
+static void __declspec(naked) HOOK_CHeli__ProcessControl()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     dwCurrentVehicle, ecx
         pushad
@@ -850,7 +869,7 @@ VOID _declspec(naked) HOOK_CHeli__ProcessControl()
 
     SwitchContext((CVehicleSAInterface*)dwCurrentVehicle);
 
-    _asm
+    __asm
     {
         popad
         mov     edx, FUNC_CHeli__ProcessControl
@@ -860,7 +879,7 @@ VOID _declspec(naked) HOOK_CHeli__ProcessControl()
 
     ReturnContextToLocalPlayer();
 
-    _asm
+    __asm
     {
         popad
         retn

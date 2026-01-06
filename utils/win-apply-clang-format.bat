@@ -6,8 +6,8 @@
 ::  * Remove inline from class method declarations
 ::  * Apply clang-format (ignoring _asm blocks and preprocessor directives)
 ::
-:: Get clang-format.exe from http://prereleases.llvm.org/win-snapshots/
-:: Get fnr.exe from http://findandreplace.io/download
+:: Get clang-format.exe from https://prereleases.llvm.org/win-snapshots/
+:: Get fnr.exe from https://findandreplace.io/download
 ::
 set CLANGFORMAT="%~dp0\clang-format-r325576.exe"
 set FNR="%~dp0\fnr.exe"
@@ -52,9 +52,6 @@ call:searchInReplaced %FINDANDREPLACE% --dir "%1" --useRegEx --find "\t" --repla
 
 echo Remove trailing spaces
 call:searchInReplaced %FINDANDREPLACE% --dir "%1" --useRegEx --useEscapeChars --find " +%EOL%" --replace "%EOL%"
-
-echo Remove DEVELOPERS
-call:searchInReplaced %FINDANDREPLACE% --dir "%1" --useRegEx --find ".*DEVELOPERS.*(%EOL%.*\w.*)*%EOL%(.*)" --replace "$2"
 
 echo Remove inline from class methods
 call:searchInReplaced %FINDANDREPLACE% --dir "%1" --useRegEx --find "^(class(.*%EOL%)*)( +)inline +((.*%EOL%)*})" --replace "$1$3$4"

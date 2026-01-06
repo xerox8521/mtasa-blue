@@ -5,11 +5,14 @@
  *  FILE:        game_sa/CPointLightsSA.h
  *  PURPOSE:     Point lights sdk header
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
+
+class CEntity;
+class CVector;
 
 enum ePointLightType
 {
@@ -21,8 +24,8 @@ enum ePointLightType
 class CPointLights
 {
 public:
-    virtual void AddLight(int iMode, const CVector vecPosition, CVector vecDirection, float fRadius, SColor color, unsigned char uc_8, bool bCreatesShadow,
-                          CEntity* pAffected) = 0;
+    virtual void AddLight(int iMode, const CVector vecPosition, CVector vecDirection, float fRadius, SharedUtil::SColor color, unsigned char uc_8,
+                          bool bCreatesShadow, CEntity* pAffected) = 0;
 
     virtual void PreRenderHeliLights() = 0;
     virtual void PostRenderHeliLights() = 0;

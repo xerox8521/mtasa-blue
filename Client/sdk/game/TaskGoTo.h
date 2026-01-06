@@ -5,14 +5,22 @@
  *  FILE:        sdk/game/TaskGoTo.h
  *  PURPOSE:     Go to task interface
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
 #include "Task.h"
-#include "CPathFind.h"
+
+class CNodeAddress
+{
+public:
+    short sRegion;
+    short sIndex;
+
+    CNodeAddress() { sRegion = -1; }
+};
 
 enum
 {

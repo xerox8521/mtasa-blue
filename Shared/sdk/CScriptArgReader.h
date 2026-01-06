@@ -5,17 +5,22 @@
  *  FILE:        CScriptArgReader.h
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
 #pragma once
+
+#include "CVector2D.h"
 #include <limits>
 #include <type_traits>
 #include <cfloat>
 #include "CStringMap.h"
+#include "CScriptDebugging.h"
+#include "CStringName.h"
 
-#ifdef MTA_CLIENT
-    #include "CScriptDebugging.h"
+#ifndef MTA_CLIENT
+    #include "CGame.h"
 #endif
 
 /////////////////////////////////////////////////////////////////////////
@@ -55,7 +60,8 @@ public:
             // The string received may not actually be a number
             if (!lua_isnumber(m_luaVM, m_iIndex))
             {
-                SetCustomWarning("Expected number, got non-convertible string. This warning may be an error in future versions.");
+                SetCustomError("Expected number, got non-convertible string", "Bad argument");
+                return;
             }
 
             // Returns 0 even if the string cannot be parsed as a number
@@ -72,7 +78,8 @@ public:
             {
                 if (checkSign && number < -FLT_EPSILON)
                 {
-                    SetCustomWarning("Expected positive value, got negative. This warning may be an error in future versions.");
+                    SetCustomError("Expected positive value, got negative", "Bad argument");
+                    return;
                 }
                 outValue = static_cast<T>(static_cast<int64_t>(number));
                 return;
@@ -99,7 +106,8 @@ public:
             // The string received may not actually be a number
             if (!lua_isnumber(m_luaVM, m_iIndex))
             {
-                SetCustomWarning("Expected number, got non-convertible string. This warning may be an error in future versions.");
+                SetCustomError("Expected number, got non-convertible string", "Bad argument");
+                return;
             }
 
             // Returns 0 even if the string cannot be parsed as a number
@@ -114,7 +122,8 @@ public:
 
             if (checkSign && std::is_unsigned<T>() && number < -FLT_EPSILON)
             {
-                SetCustomWarning("Expected positive value, got negative. This warning may be an error in future versions.");
+                SetCustomError("Expected positive value, got negative", "Bad argument");
+                return;
             }
 
             outValue = static_cast<T>(number);
@@ -153,7 +162,7 @@ public:
                 ReadUserData(pVector);
                 if (pVector)
                 {
-                    outValue = *pVector;
+                    outValue = static_cast<CVector2D&>(*pVector);
                     return;
                 }
                 outValue = CVector2D();
@@ -214,7 +223,7 @@ public:
                 ReadUserData(pVector);
                 if (pVector)
                 {
-                    outValue = *pVector;
+                    outValue = static_cast<CVector2D&>(*pVector);
                     return;
                 }
                 outValue = CVector2D();
@@ -279,7 +288,7 @@ public:
                 ReadUserData(pVector);
                 if (pVector)
                 {
-                    outValue = *pVector;
+                    outValue = static_cast<CVector&>(*pVector);
                     return;
                 }
                 outValue = CVector();
@@ -328,7 +337,7 @@ public:
                 ReadUserData(pVector);
                 if (pVector)
                 {
-                    outValue = *pVector;
+                    outValue = static_cast<CVector&>(*pVector);
                     return;
                 }
                 outValue = CVector();
@@ -381,7 +390,7 @@ public:
                 ReadUserData(pVector);
                 if (pVector)
                 {
-                    outValue = *pVector;
+                    outValue = static_cast<CVector4D&>(*pVector);
                     return;
                 }
                 outValue = CVector4D();
@@ -418,7 +427,7 @@ public:
                 ReadUserData(pVector);
                 if (pVector)
                 {
-                    outValue = *pVector;
+                    outValue = static_cast<CVector4D&>(*pVector);
                     return;
                 }
                 outValue = CVector4D();
@@ -464,7 +473,7 @@ public:
             ReadUserData(pMatrix);
             if (pMatrix)
             {
-                outValue = *pMatrix;
+                outValue = static_cast<CMatrix&>(*pMatrix);
                 return;
             }
             outValue = CMatrix();
@@ -515,6 +524,22 @@ public:
         bOutValue = false;
         SetTypeError("bool");
         m_iIndex++;
+    }
+
+    //
+    // Read next bool or false if failed
+    // Intended for use in pair with NextIsBool()
+    //
+    bool ReadBool()
+    {
+        int iArgument = lua_type(m_luaVM, m_iIndex);
+        if (iArgument == LUA_TBOOLEAN)
+        {
+            return lua_toboolean(m_luaVM, m_iIndex++) ? true : false;
+        }
+        
+        m_iIndex++;
+        return false;
     }
 
     //
@@ -582,6 +607,35 @@ public:
         }
 
         outValue = "";
+        SetTypeError("string");
+        m_iIndex++;
+    }
+
+    //
+    // Read next string name
+    //
+    void ReadStringName(CStringName& outValue)
+    {
+        const int iArgument = lua_type(m_luaVM, m_iIndex);
+        if (iArgument == LUA_TSTRING)
+        {
+            size_t length;
+            const char* str = lua_tolstring(m_luaVM, m_iIndex, &length);
+            unsigned hash = lua_tostringhash(m_luaVM, m_iIndex++);
+
+            try
+            {
+                outValue = CStringName::FromStringAndHash(std::string_view(str, length), hash);
+            }
+            catch (const std::bad_alloc&)
+            {
+                SetCustomError("out of memory", "Memory allocation");
+            }
+
+            return;
+        }        
+
+        outValue.Clear();
         SetTypeError("string");
         m_iIndex++;
     }
@@ -797,7 +851,7 @@ protected:
 
         if (iArgument == LUA_TLIGHTUSERDATA)
         {
-            outValue = (T*)UserDataCast<T>((T*)0, lua_touserdata(m_luaVM, m_iIndex), m_luaVM);
+            outValue = (T*)UserDataCast((T*)lua_touserdata(m_luaVM, m_iIndex), m_luaVM);
             if (outValue)
             {
                 m_iIndex++;
@@ -806,7 +860,7 @@ protected:
         }
         else if (iArgument == LUA_TUSERDATA)
         {
-            outValue = (T*)UserDataCast<T>((T*)0, *((void**)lua_touserdata(m_luaVM, m_iIndex)), m_luaVM);
+            outValue = (T*)UserDataCast(*((T**)lua_touserdata(m_luaVM, m_iIndex)), m_luaVM);
             if (outValue)
             {
                 m_iIndex++;
@@ -904,10 +958,7 @@ public:
     void ReadLuaArguments(CLuaArguments& outValue)
     {
         outValue.ReadArguments(m_luaVM, m_iIndex);
-        for (int i = outValue.Count(); i > 0; i--)
-        {
-            m_iIndex++;
-        }
+        m_iIndex += outValue.Count();
     }
 
     //
@@ -947,11 +998,11 @@ public:
             T* value = NULL;
             if (iArgumentType == LUA_TLIGHTUSERDATA)
             {
-                value = (T*)UserDataCast<T>((T*)0, lua_touserdata(m_luaVM, -1), m_luaVM);
+                value = (T*)UserDataCast((T*)lua_touserdata(m_luaVM, -1), m_luaVM);
             }
             else if (iArgumentType == LUA_TUSERDATA)
             {
-                value = (T*)UserDataCast<T>((T*)0, *((void**)lua_touserdata(m_luaVM, -1)), m_luaVM);
+                value = (T*)UserDataCast(*((T**)lua_touserdata(m_luaVM, -1)), m_luaVM);
             }
 
             if (value != NULL)
@@ -1101,7 +1152,7 @@ protected:
                 // Dumb number -> string convertion to avoid stack perturbations
                 if (keyType == LUA_TNUMBER)
                 {
-                    char s[LUAI_MAXNUMBER2STR];
+                    char       s[LUAI_MAXNUMBER2STR];
                     lua_Number n = lua_tonumber(m_luaVM, -2);
                     lua_number2str(s, n);
 
@@ -1120,8 +1171,6 @@ protected:
     // Reads { key, value } as a pair
     void InternalReadPairTable(std::vector<std::pair<SString, SString>>& outPairs, int iIndex)
     {
-        std::pair<SString, SString> keyValue;
-
         // lua_next has a bug after it calling findindex internally
         // But we have to iterate sequentially right now. So luaL_getn is the solution.
         for (int i = 1; i <= luaL_getn(m_luaVM, iIndex); ++i)
@@ -1136,6 +1185,8 @@ protected:
 
                 lua_pushnumber(m_luaVM, 2);
                 lua_gettable(m_luaVM, -3);
+
+                std::pair<SString, SString> keyValue;
 
                 if (InternalReadPair(keyValue))
                     outPairs.push_back(std::move(keyValue));
@@ -1152,9 +1203,10 @@ protected:
     {
         lua_pushnil(m_luaVM);
 
-        std::pair<SString, SString> keyValue;
         while (lua_next(m_luaVM, iIndex) != 0)
         {
+            std::pair<SString, SString> keyValue;
+
             if (InternalReadPair(keyValue))
                 outPairs.push_back(std::move(keyValue));
 
@@ -1283,12 +1335,12 @@ public:
         int iArgument = lua_type(m_luaVM, m_iIndex + iOffset);
         if (iArgument == LUA_TLIGHTUSERDATA)
         {
-            if (UserDataCast<T>((T*)0, lua_touserdata(m_luaVM, m_iIndex + iOffset), m_luaVM))
+            if (UserDataCast((T*)lua_touserdata(m_luaVM, m_iIndex + iOffset), m_luaVM))
                 return true;
         }
         else if (iArgument == LUA_TUSERDATA)
         {
-            if (UserDataCast<T>((T*)0, *((void**)lua_touserdata(m_luaVM, m_iIndex + iOffset)), m_luaVM))
+            if (UserDataCast(*((T**)lua_touserdata(m_luaVM, m_iIndex + iOffset)), m_luaVM))
                 return true;
         }
         return false;

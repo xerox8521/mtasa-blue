@@ -5,11 +5,17 @@
  *  FILE:        mods/deathmatch/logic/luadefs/CLuaDatabaseDefs.cpp
  *  PURPOSE:     Lua function definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLuaDatabaseDefs.h"
+#include "CStaticFunctionDefinitions.h"
+#include "CScriptArgReader.h"
+#include "CPerfStatManager.h"
+#include "lua/CLuaCallback.h"
+#include "Utils.h"
 
 void CLuaDatabaseDefs::LoadFunctions()
 {
@@ -215,7 +221,7 @@ void CLuaDatabaseDefs::DbFreeCallback(CDbJobData* pJobData, void* pContext)
     if (pJobData->stage >= EJobStage::RESULT && pJobData->result.status == EJobResult::FAIL)
     {
         if (!pJobData->result.bErrorSuppressed)
-            m_pScriptDebugging->LogWarning(pJobData->m_LuaDebugInfo, "dbExec failed; (%d) %s", pJobData->result.uiErrorCode, *pJobData->result.strReason);
+            m_pScriptDebugging->LogWarning(pJobData->m_LuaDebugInfo, "dbFree failed; (%d) %s", pJobData->result.uiErrorCode, *pJobData->result.strReason);
     }
 }
 
@@ -286,7 +292,7 @@ int CLuaDatabaseDefs::DbConnect(lua_State* luaVM)
                 // Set default values if required
                 GetOption<CDbOptionsMap>(strOptions, "log", bLoggingEnabled, 1);
                 GetOption<CDbOptionsMap>(strOptions, "tag", strLogTag, "script");
-                GetOption<CDbOptionsMap>(strOptions, "queue", strQueueName, (strType == "mysql") ? strHost : DB_SQLITE_QUEUE_NAME_DEFAULT);
+                GetOption<CDbOptionsMap>(strOptions, "queue", strQueueName, (strType == "mysql") ? strHost : SStringX(DB_SQLITE_QUEUE_NAME_DEFAULT));
                 SetOption<CDbOptionsMap>(strOptions, "log", bLoggingEnabled);
                 SetOption<CDbOptionsMap>(strOptions, "tag", strLogTag);
                 SetOption<CDbOptionsMap>(strOptions, "queue", strQueueName);

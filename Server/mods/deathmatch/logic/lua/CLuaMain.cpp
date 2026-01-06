@@ -5,13 +5,48 @@
  *  FILE:        mods/deathmatch/logic/lua/CLuaMain.cpp
  *  PURPOSE:     Lua virtual machine container class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
-
-#include "CLuaFunctionDefs.h"
+#include "CLuaMain.h"
+#include "LuaCommon.h"
+#include "lua/CLuaShared.h"
+#include "luadefs/CLuaHTTPDefs.h"
+#include "luadefs/CLuaUtilDefs.h"
+#include "luadefs/CLuaElementDefs.h"
+#include "luadefs/CLuaAccountDefs.h"
+#include "luadefs/CLuaACLDefs.h"
+#include "luadefs/CLuaBanDefs.h"
+#include "luadefs/CLuaBlipDefs.h"
+#include "luadefs/CLuaBuildingDefs.h"
+#include "luadefs/CLuaColShapeDefs.h"
+#include "luadefs/CLuaDatabaseDefs.h"
+#include "luadefs/CLuaMarkerDefs.h"
+#include "luadefs/CLuaObjectDefs.h"
+#include "luadefs/CLuaPedDefs.h"
+#include "luadefs/CLuaPickupDefs.h"
+#include "luadefs/CLuaPlayerDefs.h"
+#include "luadefs/CLuaRadarAreaDefs.h"
+#include "luadefs/CLuaResourceDefs.h"
+#include "luadefs/CLuaTeamDefs.h"
+#include "luadefs/CLuaTextDefs.h"
+#include "luadefs/CLuaTimerDefs.h"
+#include "luadefs/CLuaVehicleDefs.h"
+#include "luadefs/CLuaWaterDefs.h"
+#include "CPerfStatManager.h"
+#include "CRemoteCalls.h"
+#include "CLatentTransferManager.h"
+#include "CDebugHookManager.h"
+#include "lua/CLuaCallback.h"
+#include "CGame.h"
+#include "CMapManager.h"
+#include "CDummy.h"
+#include "CKeyBinds.h"
+#include "CIdArray.h"
+#include "CResourceConfigItem.h"
+#include "luadefs/CLuaFunctionDefs.h"
 #include <clocale>
 
 static CLuaManager* m_pLuaManager;
@@ -108,17 +143,10 @@ void CLuaMain::ResetInstructionCount()
 void CLuaMain::InitSecurity()
 {
     // Disable dangerous Lua Os library functions
-    static const luaL_reg osfuncs[] =
-    {
-        { "execute", CLuaUtilDefs::DisabledFunction },
-        { "rename", CLuaUtilDefs::DisabledFunction },
-        { "remove", CLuaUtilDefs::DisabledFunction },
-        { "exit", CLuaUtilDefs::DisabledFunction },
-        { "getenv", CLuaUtilDefs::DisabledFunction },
-        { "tmpname", CLuaUtilDefs::DisabledFunction },
-        { "setlocale", CLuaUtilDefs::DisabledFunction },
-        { NULL, NULL }
-    };
+    static const luaL_reg osfuncs[] = {{"execute", CLuaUtilDefs::DisabledFunction},   {"rename", CLuaUtilDefs::DisabledFunction},
+                                       {"remove", CLuaUtilDefs::DisabledFunction},    {"exit", CLuaUtilDefs::DisabledFunction},
+                                       {"getenv", CLuaUtilDefs::DisabledFunction},    {"tmpname", CLuaUtilDefs::DisabledFunction},
+                                       {"setlocale", CLuaUtilDefs::DisabledFunction}, {NULL, NULL}};
     luaL_register(m_luaVM, "os", osfuncs);
 
     lua_register(m_luaVM, "dofile", CLuaUtilDefs::DisabledFunction);
@@ -149,6 +177,7 @@ void CLuaMain::InitClasses(lua_State* luaVM)
     CLuaACLDefs ::AddClass(luaVM);
     CLuaBanDefs ::AddClass(luaVM);
     CLuaBlipDefs ::AddClass(luaVM);
+    CLuaBuildingDefs ::AddClass(luaVM);
     CLuaColShapeDefs ::AddClass(luaVM);
     CLuaDatabaseDefs ::AddClass(luaVM);
     CLuaMarkerDefs ::AddClass(luaVM);
@@ -207,6 +236,9 @@ void CLuaMain::Initialize()
 
     lua_pushelement(m_luaVM, m_pResource->GetResourceRootElement());
     lua_setglobal(m_luaVM, "resourceRoot");
+
+    lua_pushstring(m_luaVM, m_pResource->GetName());
+    lua_setglobal(m_luaVM, "resourceName");
 }
 
 void CLuaMain::LoadEmbeddedScripts()
@@ -257,7 +289,7 @@ bool CLuaMain::LoadScriptFromBuffer(const char* cpInBuffer, unsigned int uiInSiz
     uint        uiSize;
     if (!g_pRealNetServer->DeobfuscateScript(cpInBuffer, uiInSize, &cpBuffer, &uiSize, strNiceFilename))
     {
-        SString strMessage("%s is invalid. Please re-compile at http://luac.mtasa.com/", *strNiceFilename);
+        SString strMessage("%s is invalid. Please re-compile at https://luac.multitheftauto.com/", *strNiceFilename);
         g_pGame->GetScriptDebugging()->LogError(m_luaVM, "Loading script failed: %s", *strMessage);
         return false;
     }
@@ -667,4 +699,14 @@ int CLuaMain::OnUndump(const char* p, size_t n)
         return 0;
     }
     return 1;
+}
+
+///////////////////////////////////////////////////////////////
+//
+// CLuaMain::GetElementCount
+//
+///////////////////////////////////////////////////////////////
+unsigned long CLuaMain::GetElementCount() const
+{
+    return m_pResource && m_pResource->GetElementGroup() ? m_pResource->GetElementGroup()->GetCount() : 0;
 }

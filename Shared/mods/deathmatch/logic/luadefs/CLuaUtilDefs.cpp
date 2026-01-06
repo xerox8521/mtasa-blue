@@ -4,11 +4,37 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        Shared/mods/logic/luadefs/CLuaUtilDefs.cpp
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLuaUtilDefs.h"
+#include "CScriptArgReader.h"
+#include "Utils.h"
+#include <lua/CLuaFunctionParser.h>
+#include <SharedUtil.Memory.h>
+
+#ifndef MTA_CLIENT
+    #include "CRemoteCalls.h"
+#endif
+
+static auto GetProcessMemoryStats() -> std::optional<std::unordered_map<const char*, lua_Number>>
+{
+    ProcessMemoryStats memoryStats{};
+
+    if (TryGetProcessMemoryStats(memoryStats))
+    {
+        return std::unordered_map<const char*, lua_Number>{
+            {"virtual", memoryStats.virtualMemorySize},
+            {"resident", memoryStats.residentMemorySize},
+            {"shared", memoryStats.sharedMemorySize},
+            {"private", memoryStats.privateMemorySize},
+        };
+    }
+
+    return std::nullopt;
+}
 
 void CLuaUtilDefs::LoadFunctions()
 {
@@ -46,6 +72,7 @@ void CLuaUtilDefs::LoadFunctions()
         // Utility functions
         {"gettok", GetTok},
         {"tocolor", tocolor},
+        {"getProcessMemoryStats", ArgumentParser<GetProcessMemoryStats>},
     };
 
     // Add functions
@@ -200,7 +227,7 @@ int CLuaUtilDefs::Split(lua_State* luaVM)
             lua_pushstring(luaVM, szToken);
             lua_settable(luaVM, -3);
 
-            szToken = strtok(NULL, strDelimiter);
+            szToken = strtok(nullptr, strDelimiter.c_str());
         }
 
         // Delete the text
@@ -236,7 +263,7 @@ int CLuaUtilDefs::GetUserdataType(lua_State* luaVM)
         else if (iArgument == LUA_TUSERDATA)
             strType = GetUserDataClassName(*((void**)lua_touserdata(luaVM, 1)), luaVM, false);
 
-        strType = strType.empty() ? "userdata" : strType;
+        strType = strType.empty() ? SStringX("userdata") : strType;
 
         lua_pushstring(luaVM, strType.c_str());
         return 1;
@@ -472,7 +499,7 @@ int CLuaUtilDefs::fromJSON(lua_State* luaVM)
         {
             // Return it as data
             Converted.PushArguments(luaVM);
-            return Converted.Count();
+            return static_cast<int>(Converted.Count());
         }
     }
     else
@@ -527,7 +554,7 @@ int CLuaUtilDefs::PregReplace(lua_State* luaVM)
     {
         pcrecpp::RE pPattern(strPattern, pOptions);
 
-        string strNew = strBase;
+        std::string strNew = strBase;
         if (pPattern.GlobalReplace(strReplace, &strNew))
         {
             lua_pushstring(luaVM, strNew.c_str());
@@ -562,8 +589,8 @@ int CLuaUtilDefs::PregMatch(lua_State* luaVM)
 
         pcrecpp::StringPiece strInput(strBase);
 
-        string strGet;
-        int    i = 1;
+        std::string strGet;
+        int         i = 1;
         while (pPattern.FindAndConsume(&strInput, &strGet) && i <= iMaxResults)
         {
             lua_pushnumber(luaVM, i);
@@ -634,7 +661,7 @@ int CLuaUtilDefs::GetTok(lua_State* luaVM)
     if (argStream.NextIsNumber())
     {
         argStream.ReadNumber(uiDelimiter);
-        wchar_t wUNICODE[2] = { static_cast<wchar_t>(uiDelimiter), '\0' };
+        wchar_t wUNICODE[2] = {static_cast<wchar_t>(uiDelimiter), '\0'};
         strDelimiter = UTF16ToMbUTF8(wUNICODE);
     }
     else            // It's already a string
@@ -701,7 +728,8 @@ int CLuaUtilDefs::tocolor(lua_State* luaVM)
     if (!argStream.HasErrors())
     {
         // Make it into an unsigned long
-        unsigned long ulColor = COLOR_RGBA(iRed, iGreen, iBlue, iAlpha);
+        unsigned long ulColor = COLOR_RGBA(static_cast<unsigned char>(iRed), static_cast<unsigned char>(iGreen),
+                                           static_cast<unsigned char>(iBlue), static_cast<unsigned char>(iAlpha));
         lua_pushinteger(luaVM, static_cast<lua_Integer>(ulColor));
         return 1;
     }

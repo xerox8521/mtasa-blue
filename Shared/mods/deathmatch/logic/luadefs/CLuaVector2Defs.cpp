@@ -5,11 +5,16 @@
  *  FILE:        Shared/mods/deathmatch/logic/luadefs/CLuaVector2Defs.cpp
  *  PURPOSE:     Lua general class functions
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLuaVector2Defs.h"
+#include "CStaticFunctionDefinitions.h"
+#include "lua/LuaCommon.h"
+#include "lua/CLuaShared.h"
+#include "CScriptArgReader.h"
 
 void CLuaVector2Defs::AddClass(lua_State* luaVM)
 {

@@ -5,13 +5,13 @@
  *  FILE:        mods/deathmatch/logic/CVehicleNames.cpp
  *  PURPOSE:     GTA vehicle name definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
-
-using namespace std;
+#include "CVehicleNames.h"
+#include "CVehicleManager.h"
 
 const char* szVehicleNameEmpty = "";
 
@@ -123,8 +123,8 @@ static const SFixedArray<SVehicleName, 212> VehicleNames = {{{"Landstalker"},
                                                              {"Benson"},
                                                              {"Mesa"},
                                                              {"RC Goblin"},
-                                                             {"Hotring Racer 3"},
                                                              {"Hotring Racer 2"},
+                                                             {"Hotring Racer 3"},
                                                              {"Bloodring Banger"},
                                                              {"Rancher Lure"},
                                                              {"Super GT"},

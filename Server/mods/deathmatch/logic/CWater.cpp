@@ -5,11 +5,14 @@
  *  FILE:        mods/deathmatch/logic/CWater.cpp
  *  PURPOSE:     Water entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CWater.h"
+#include "CWaterManager.h"
+#include "CLogger.h"
 
 CWater::CWater(CWaterManager* pWaterManager, CElement* pParent, EWaterType waterType, bool bShallow) : CElement(pParent)
 {

@@ -1,4 +1,16 @@
-#include <StdInc.h>
+/*****************************************************************************
+ *
+ *  PROJECT:     Multi Theft Auto
+ *  LICENSE:     See LICENSE in the top level directory
+ *  FILE:        game_sa/CPedSoundSA.cpp
+ *  PURPOSE:     Ped sound
+ *
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
+ *
+ *****************************************************************************/
+
+#include "StdInc.h"
+#include "CPedSoundSA.h"
 
 int CPedSoundSA::m_iNumVoicesPerType[] = {NUM_GEN_VOICES, NUM_EMG_VOICES, NUM_PLAYER_VOICES, NUM_GANG_VOICES, NUM_GFD_VOICES};
 
@@ -18,7 +30,7 @@ short CPedSoundSA::GetVoiceID()
 
 void CPedSoundSA::SetVoiceTypeID(short sVoiceType)
 {
-    m_pInterface->m_sVoiceType = sVoiceType;
+    m_pInterface->m_sVoiceType = static_cast<ePedVoiceType>(sVoiceType);
 }
 
 void CPedSoundSA::SetVoiceID(short sVoiceID)
@@ -31,7 +43,7 @@ bool CPedSoundSA::IsSpeechDisabled()
     bool  bReturn;
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAEPedSound__IsSpeedDisabled;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         call    dwFunc
@@ -44,7 +56,7 @@ void CPedSoundSA::EnablePedSpeech()
 {
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAEPedSound__EnablePedSpeech;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         call    dwFunc
@@ -55,7 +67,7 @@ void CPedSoundSA::DisablePedSpeech(bool bStopCurrent)
 {
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAEPedSound__DisablePedSpeech;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         push    bStopCurrent
@@ -68,7 +80,7 @@ short CPedSoundSA::GetVoiceTypeIDFromName(const char* szVoiceTypeName)
     DWORD dwFunc = (DWORD)FUNC_CAEPedSound__GetAudioPedType;
     short sVoiceTypeID;
 
-    _asm
+    __asm
     {
         push    szVoiceTypeName
         call    dwFunc
@@ -83,7 +95,7 @@ short CPedSoundSA::GetVoiceIDFromName(short sVoiceTypeID, const char* szVoiceNam
     DWORD dwFunc = (DWORD)FUNC_CAEPedSound__GetVoice;
     short sVoiceID;
 
-    _asm
+    __asm
     {
         movzx eax, sVoiceTypeID
         push    eax

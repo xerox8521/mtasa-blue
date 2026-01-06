@@ -47,8 +47,6 @@ public:
     // Output functions
     LUA_DECLARE(OutputConsole);
     LUA_DECLARE(OutputChatBox);
-    LUA_DECLARE(ShowChat);
-    LUA_DECLARE(IsChatVisible);
     LUA_DECLARE(OutputClientDebugString);
     LUA_DECLARE(SetClipboard);
     LUA_DECLARE(SetWindowFlashing);
@@ -63,6 +61,8 @@ public:
     LUA_DECLARE(GetClothesByTypeIndex);
     LUA_DECLARE(GetTypeIndexFromClothes);
     LUA_DECLARE(GetClothesTypeName);
+    LUA_DECLARE(AddClothingModel);
+    LUA_DECLARE(RemoveClothingModel);
 
     // Cursor funcs
     LUA_DECLARE(GetCursorPosition);
@@ -140,4 +140,6 @@ private:
     static CClientDFFManager*         m_pDFFManager;
     static CClientColModelManager*    m_pColModelManager;
     static CRegisteredCommands*       m_pRegisteredCommands;
+    static CClientIMGManager*         m_pImgManager;
+    static CClientBuildingManager*    m_pBuildingManager;
 };

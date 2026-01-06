@@ -5,12 +5,13 @@
  *  FILE:        game_sa/CRopesSA.h
  *  PURPOSE:     Header file for rope entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
+#include <CVector.h>
 #include <game/CRopes.h>
 
 #define ROPES_COUNT    8
@@ -41,7 +42,7 @@ static_assert(sizeof(CRopesSAInterface) == 0x328, "Invalid size for CRopesSAInte
 class CRopesSA : public CRopes
 {
 public:
-    int CreateRopeForSwatPed(const CVector& vecPosition, DWORD dwDuration = 4000);
+    int  CreateRopeForSwatPed(const CVector& vecPosition, DWORD dwDuration = 4000);
     void RemoveEntityRope(CEntitySAInterface* pObject);
 
 private:

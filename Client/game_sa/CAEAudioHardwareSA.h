@@ -5,13 +5,12 @@
  *  FILE:        game_sa/CAEAudioHardwareSA.h
  *  PURPOSE:     Audio hardware header
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
-#include "Common.h"
 #include <game/CAEAudioHardware.h>
 
 #define FUNC_CAEAudioHardware__IsSoundBankLoaded                            0x4D88C0

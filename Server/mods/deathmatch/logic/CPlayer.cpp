@@ -5,11 +5,29 @@
  *  FILE:        mods/deathmatch/logic/CPlayer.cpp
  *  PURPOSE:     Player ped entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPlayer.h"
+#include "CElementRefManager.h"
+#include "CGame.h"
+#include "ASE.h"
+#include "CMapManager.h"
+#include "CPlayerCamera.h"
+#include "CKeyBinds.h"
+#include "CPerfStatManager.h"
+#include "CTickRateSettings.h"
+#include "CBandwidthSettings.h"
+#include "CUnoccupiedVehicleSync.h"
+#include "CScriptDebugging.h"
+#include "packets/CLuaPacket.h"
+#include "packets/CConsoleEchoPacket.h"
+#include "packets/CChatEchoPacket.h"
+#include "CWeaponStatManager.h"
+#include "Utils.h"
+#include "CSpatialDatabase.h"
 #include "net/SimHeaders.h"
 
 extern CGame* g_pGame;
@@ -199,27 +217,27 @@ bool CPlayer::ShouldIgnoreMinClientVersionChecks()
     return false;
 }
 
-bool CPlayer::SubscribeElementData(CElement* pElement, const std::string& strName)
+bool CPlayer::SubscribeElementData(CElement* pElement, CStringName name)
 {
-    OutputDebugLine(SString("[Data] SubscribeElementData %s [%s]", GetNick(), strName.c_str()));
-    return m_DataSubscriptions.emplace(std::make_pair(pElement, strName)).second;
+    OutputDebugLine(SString("[Data] SubscribeElementData %s [%s]", GetNick(), name.ToCString()));
+    return m_DataSubscriptions.emplace(std::make_pair(pElement, name)).second;
 }
 
-bool CPlayer::UnsubscribeElementData(CElement* pElement, const std::string& strName)
+bool CPlayer::UnsubscribeElementData(CElement* pElement, CStringName name)
 {
-    OutputDebugLine(SString("[Data] UnsubscribeElementData %s [%s]", GetNick(), strName.c_str()));
-    return m_DataSubscriptions.erase(std::make_pair(pElement, strName)) > 0;
+    OutputDebugLine(SString("[Data] UnsubscribeElementData %s [%s]", GetNick(), name.ToCString()));
+    return m_DataSubscriptions.erase(std::make_pair(pElement, name)) > 0;
 }
 
 bool CPlayer::UnsubscribeElementData(CElement* pElement)
 {
     bool erased = false;
 
-    for (auto it = m_DataSubscriptions.begin(); it != m_DataSubscriptions.end(); )
+    for (auto it = m_DataSubscriptions.begin(); it != m_DataSubscriptions.end();)
     {
         if (it->first == pElement)
         {
-            OutputDebugLine(SString("[Data] UnsubscribeElementData %s [%s]", GetNick(), it->second.c_str()));
+            OutputDebugLine(SString("[Data] UnsubscribeElementData %s [%s]", GetNick(), it->second.ToCString()));
             it = m_DataSubscriptions.erase(it);
             erased = true;
         }
@@ -230,9 +248,9 @@ bool CPlayer::UnsubscribeElementData(CElement* pElement)
     return erased;
 }
 
-bool CPlayer::IsSubscribed(CElement* pElement, const std::string& strName) const
+bool CPlayer::IsSubscribed(CElement* pElement, CStringName name) const
 {
-    return m_DataSubscriptions.find(std::make_pair(pElement, strName)) != m_DataSubscriptions.end();
+    return m_DataSubscriptions.find(std::make_pair(pElement, name)) != m_DataSubscriptions.end();
 }
 
 const char* CPlayer::GetSourceIP()
@@ -250,6 +268,9 @@ const char* CPlayer::GetSourceIP()
 uint CPlayer::Send(const CPacket& Packet)
 {
     if (!CNetBufferWatchDog::CanSendPacket(Packet.GetPacketID()))
+        return 0;
+
+    if (IsLeavingServer())
         return 0;
 
     // Use the flags to determine how to send it
@@ -296,7 +317,7 @@ uint CPlayer::Send(const CPacket& Packet)
         if (Packet.Write(*pBitStream))
         {
             uiBitsSent = pBitStream->GetNumberOfBitsUsed();
-            g_pGame->SendPacket(Packet.GetPacketID(), m_PlayerSocket, pBitStream, FALSE, packetPriority, Reliability, Packet.GetPacketOrdering());
+            g_pGame->SendPacket(Packet.GetPacketID(), m_PlayerSocket, pBitStream, false, packetPriority, Reliability, Packet.GetPacketOrdering());
         }
 
         // Destroy the bitstream
@@ -307,7 +328,7 @@ uint CPlayer::Send(const CPacket& Packet)
 
 void CPlayer::SendEcho(const char* szEcho)
 {
-    Send(CChatEchoPacket(szEcho, CHATCOLOR_MESSAGE));
+    Send(CChatEchoPacket(szEcho, CHATCOLOR_MESSAGE, false, MESSAGE_TYPE_INTERNAL));
 }
 
 void CPlayer::SendConsole(const char* szEcho)
@@ -453,9 +474,16 @@ void CPlayer::RemoveAllSyncingObjects()
     }
 }
 
-bool CPlayer::SetScriptDebugLevel(unsigned int uiLevel)
+bool CPlayer::SetScriptDebugLevel(std::uint8_t level)
 {
-    return m_pScriptDebugging->AddPlayer(*this, uiLevel);
+    if (!m_pScriptDebugging->AddPlayer(*this, level))
+        return false;
+
+    CPlayerBitStream BitStream(this);
+    BitStream.pBitStream->Write(level);
+
+    Send(CLuaPacket(SET_PLAYER_SCRIPT_DEBUG_LEVEL, *BitStream.pBitStream));
+    return true;
 }
 
 void CPlayer::SetDamageInfo(ElementID ElementID, unsigned char ucWeapon, unsigned char ucBodyPart)
@@ -1093,8 +1121,9 @@ void CPlayer::SetPlayerStat(unsigned short usStat, float fValue)
 // Calculate weapon range using efficient stuffs
 float CPlayer::GetWeaponRangeFromSlot(uint uiSlot)
 {
-    eWeaponType eWeapon = static_cast<eWeaponType>(GetWeaponType(uiSlot));
-    float       fSkill = GetPlayerStat(CWeaponStatManager::GetSkillStatIndex(eWeapon));
+    unsigned char ucSlot = (uiSlot > 0xff) ? 0xff : static_cast<unsigned char>(uiSlot);
+    eWeaponType   eWeapon = static_cast<eWeaponType>(GetWeaponType(ucSlot));
+    float         fSkill = GetPlayerStat(CWeaponStatManager::GetSkillStatIndex(eWeapon));
 
     if (fSkill != m_fWeaponRangeLastSkill || eWeapon != m_eWeaponRangeLastWeapon ||
         CWeaponStat::GetAllWeaponStatsRevision() != m_uiWeaponRangeLastStatsRevision)

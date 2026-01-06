@@ -5,7 +5,7 @@
  *  FILE:        SharedUtil.Misc.h
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 #pragma once
@@ -16,35 +16,114 @@
 #include <list>
 #include <map>
 #include <set>
+#include <type_traits>
+#include <mutex>
+#include <utility>
+#include <functional>
 
 #include "SString.h"
 #include "WString.h"
 #include "SharedUtil.Defines.h"
 #include "SharedUtil.Map.h"
+#include "SharedUtil.Logging.h"
 
+#if __cplusplus >= 201703L // C++17
+    #ifndef __GLIBCXX__
+        namespace std
+        {
+            namespace filesystem
+            {
+                class path;
+            }
+        }
+    #else
+        namespace std
+        {
+            namespace filesystem
+            {
+                inline namespace __cxx11 __attribute__((__abi_tag__("cxx11"))) {}
+                inline _GLIBCXX_BEGIN_NAMESPACE_CXX11
+
+                class path;
+
+                _GLIBCXX_END_NAMESPACE_CXX11
+            }
+        }
+    #endif
+#endif
+
+#ifdef WIN32
+// Forward declare basic windows types to avoid including windows.h here
+#ifdef STRICT
+struct HGLOBAL__;
+using WinHGlobalHandle = struct HGLOBAL__*;
+#else
+using WinHGlobalHandle = void*;
+#endif
+
+struct HWND__;
+    #ifndef _WINDOWS_
+typedef HWND__* HWND;
+typedef unsigned int UINT;
+        #ifndef HINSTANCE__
+struct HINSTANCE__;
+        #endif
+typedef HINSTANCE__* HINSTANCE;
+typedef HINSTANCE HMODULE;
+    #ifndef BOOL
+typedef int BOOL;
+    #endif
+    #ifndef WINAPI
+        #define WINAPI __stdcall
+    #endif
+    #ifndef NO_ERROR
+        #define NO_ERROR 0L
+    #endif
+    extern "C" __declspec(dllimport) void WINAPI SetLastError(DWORD dwErrCode);
+    extern "C" __declspec(dllimport) DWORD WINAPI GetLastError(void);
+    extern "C" __declspec(dllimport) BOOL WINAPI GlobalUnlock(WinHGlobalHandle hMem);
+    #endif
+#endif
 
 namespace SharedUtil
 {
     class CArgMap;
 #ifdef WIN32
 
+    namespace Details
+    {
+        inline void* GetProcAddressRaw(HMODULE hModule, const char* functionName) noexcept
+        {
+#ifdef _WINDOWS_
+            if (hModule != nullptr)
+            {
+                return reinterpret_cast<void*>(::GetProcAddress(hModule, functionName));
+            }
+#else
+            (void)hModule;
+            (void)functionName;
+#endif
+            return nullptr;
+        }
+    }
+
     SString GetMajorVersionString();
 
     // Get a system registry value
-    SString GetSystemRegistryValue(uint hKey, const SString& strPath, const SString& strName);
+    SString GetSystemRegistryValue(uint hKey, const SString& strPath, const SString& strName, int* iResult = nullptr);
 
     // Get/set registry values for the current version
     void    SetRegistryValue(const SString& strPath, const SString& strName, const SString& strValue, bool bFlush = false);
-    SString GetRegistryValue(const SString& strPath, const SString& strName);
+    SString GetRegistryValue(const SString& strPath, const SString& strName, int* iResult = nullptr);
     bool    RemoveRegistryKey(const SString& strPath);
 
     // Get/set registry values for a particular version
     void    SetVersionRegistryValue(const SString& strVersion, const SString& strPath, const SString& strName, const SString& strValue);
-    SString GetVersionRegistryValue(const SString& strVersion, const SString& strPath, const SString& strName);
+    SString GetVersionRegistryValue(const SString& strVersion, const SString& strPath, const SString& strName, int* iResult = nullptr);
 
     // Get/set registry values for all versions (Common)
     void    SetCommonRegistryValue(const SString& strPath, const SString& strName, const SString& strValue);
-    SString GetCommonRegistryValue(const SString& strPath, const SString& strName);
+    SString GetCommonRegistryValue(const SString& strPath, const SString& strName, int* iResult = nullptr);
 
     bool ShellExecuteBlocking(const SString& strAction, const SString& strFile, const SString& strParameters = "", const SString& strDirectory = "",
                               int nShowCmd = 1);
@@ -55,9 +134,7 @@ namespace SharedUtil
     // Output a UTF8 encoded messagebox
     // Used in the Win32 Client only
     //
-    #ifdef _WINDOWS_
     int MessageBoxUTF8(HWND hWnd, SString lpText, SString lpCaption, UINT uType);
-    #endif
 
     //
     // Return full path and filename of parent exe
@@ -78,6 +155,146 @@ namespace SharedUtil
 
     // Returns true if current process is GTA (i.e not MTA process)
     bool IsGTAProcess();
+
+    // Returns true if the pointer points to committed, readable memory
+    bool IsReadablePointer(const void* ptr, size_t size);
+
+    [[nodiscard]] const SString& GetMTAProcessBaseDir();
+
+    template <typename TFunction>
+    [[nodiscard]] inline bool TryGetProcAddress(HMODULE hModule, const char* functionName, TFunction& outExport) noexcept
+    {
+        static_assert(std::is_pointer_v<TFunction>, "TryGetProcAddress expects a pointer type");
+
+        void* address = nullptr;
+
+    #if defined(_WIN32)
+        address = Details::GetProcAddressRaw(hModule, functionName);
+    #else
+        (void)hModule;
+        (void)functionName;
+    #endif
+
+        if (address != nullptr)
+        {
+            outExport = reinterpret_cast<TFunction>(address);
+            return true;
+        }
+
+        outExport = nullptr;
+        return false;
+    }
+
+    class GlobalUnlockGuard
+    {
+    public:
+    using MutexGuard = std::scoped_lock<std::mutex>;
+
+        GlobalUnlockGuard() noexcept = default;
+        explicit GlobalUnlockGuard(WinHGlobalHandle handle) noexcept : m_handle(handle) {}
+        ~GlobalUnlockGuard() { UnlockAndLog("during destruction"); }
+
+        GlobalUnlockGuard(const GlobalUnlockGuard&) = delete;
+        GlobalUnlockGuard& operator=(const GlobalUnlockGuard&) = delete;
+
+        GlobalUnlockGuard(GlobalUnlockGuard&& other) noexcept : m_handle(other.release()) {}
+
+        GlobalUnlockGuard& operator=(GlobalUnlockGuard&& other) noexcept
+        {
+            if (this != &other)
+            {
+                WithLock([&]() noexcept {
+                    DWORD errorCode = NO_ERROR;
+                    UnlockLocked("during move assignment", &errorCode);
+                    m_handle = other.release();
+                });
+            }
+            return *this;
+        }
+
+        [[nodiscard]] bool UnlockChecked(DWORD* failureCode = nullptr) noexcept
+        {
+            return WithLock([&]() noexcept { return UnlockInternal(failureCode); });
+        }
+
+    void reset(WinHGlobalHandle handle = nullptr) noexcept
+        {
+            WithLock([&]() noexcept {
+                DWORD errorCode = NO_ERROR;
+                UnlockLocked("during reset", &errorCode);
+                m_handle = handle;
+            });
+        }
+
+    [[nodiscard]] WinHGlobalHandle release() noexcept
+        {
+            return WithLock([&]() noexcept { return std::exchange(m_handle, nullptr); });
+        }
+
+    [[nodiscard]] WinHGlobalHandle get() const noexcept
+        {
+            return WithLock([&]() noexcept { return m_handle; });
+        }
+
+        [[nodiscard]] explicit operator bool() const noexcept { return get() != nullptr; }
+
+    private:
+        void UnlockAndLog(const char* context) noexcept
+        {
+            WithLock([&]() noexcept {
+                DWORD errorCode = NO_ERROR;
+                UnlockLocked(context, &errorCode);
+            });
+        }
+
+        template <typename Fn>
+        decltype(auto) WithLock(Fn&& fn) const noexcept(noexcept(std::invoke(std::forward<Fn>(fn))))
+        {
+            MutexGuard lock(m_mutex);
+            return std::invoke(std::forward<Fn>(fn));
+        }
+
+        template <typename Fn>
+        decltype(auto) WithLock(Fn&& fn) noexcept(noexcept(static_cast<const GlobalUnlockGuard*>(this)->WithLock(std::forward<Fn>(fn))))
+        {
+            return static_cast<const GlobalUnlockGuard*>(this)->WithLock(std::forward<Fn>(fn));
+        }
+
+        bool UnlockLocked(const char* context, DWORD* failureCode) noexcept
+        {
+            const bool ok = UnlockInternal(failureCode);
+            if (!ok && context && failureCode && *failureCode != NO_ERROR)
+                OutputDebugLine(SString("[GlobalUnlockGuard] GlobalUnlock %s failed (error %lu)", context, static_cast<unsigned long>(*failureCode)));
+            return ok;
+        }
+
+        bool UnlockInternal(DWORD* failureCode) noexcept
+        {
+            if (!m_handle)
+            {
+                if (failureCode)
+                    *failureCode = NO_ERROR;
+                return true;
+            }
+
+            SetLastError(NO_ERROR);
+            const BOOL unlocked = GlobalUnlock(m_handle);
+            const DWORD lastError = GetLastError();
+            const bool failed = (unlocked == 0 && lastError != NO_ERROR);
+            if (failureCode)
+                *failureCode = failed ? lastError : NO_ERROR;
+            m_handle = nullptr;
+            return !failed;
+        }
+
+        WinHGlobalHandle   m_handle = nullptr;
+        mutable std::mutex m_mutex;
+    };
+
+    [[nodiscard]] inline GlobalUnlockGuard MakeGlobalUnlockGuard(WinHGlobalHandle handle) noexcept
+    {
+        return GlobalUnlockGuard(handle);
+    }
 
     //
     // Run ShellExecute with these parameters after exit
@@ -202,7 +419,7 @@ namespace SharedUtil
     };
     struct SThreadCPUTimesStore : SThreadCPUTimes
     {
-        SThreadCPUTimesStore(){}
+        SThreadCPUTimesStore() {}
         uint64 ullPrevCPUMeasureTimeMs = 0;
         uint64 ullPrevUserTimeUs = 0;
         uint64 ullPrevKernelTimeUs = 0;
@@ -215,8 +432,6 @@ namespace SharedUtil
     SString EscapeString(const SString& strText, const SString& strDisallowedChars, char cSpecialChar = '#', uchar ucLowerLimit = 0, uchar ucUpperLimit = 255);
     SString UnescapeString(const SString& strText, char cSpecialChar = '#');
     SString EscapeURLArgument(const SString& strText);
-
-    SString ExpandEnvString(const SString& strInput);
 
     // Version string things
     bool    IsValidVersionString(const SString& strVersion);
@@ -231,10 +446,15 @@ namespace SharedUtil
     // string stuff
     //
 
+#if __cplusplus >= 201703L // C++17
+    std::string UTF8FilePath(const std::filesystem::path& input);
+#endif
+
     std::wstring MbUTF8ToUTF16(const SString& s);
 
     std::string UTF16ToMbUTF8(const std::wstring& ws);
     std::string UTF16ToMbUTF8(const wchar_t* ws);
+    std::string UTF16ToMbUTF8(const char16_t* ws);
 
     std::wstring ANSIToUTF16(const SString& s);
 
@@ -245,6 +465,10 @@ namespace SharedUtil
     // Buffer identification
     bool IsLuaCompiledScript(const void* pData, uint uiLength);
     bool IsLuaObfuscatedScript(const void* pData, uint uiLength);
+
+    // Return a pointer to the (shifted) trimmed string
+    // @ref https://stackoverflow.com/a/26984026
+    char* Trim(char* szText);
 
     //
     // Some templates
@@ -340,13 +564,14 @@ namespace SharedUtil
     template <class TL, class T>
     bool ListContains(const TL& itemList, const T& item)
     {
+        if (itemList.empty())
+            return false;
         typename TL ::const_iterator it = itemList.begin();
         for (; it != itemList.end(); ++it)
             if (item == *it)
                 return true;
         return false;
     }
-
     // Add item if it does not aleady exist in itemList
     template <class TL, class T>
     void ListAddUnique(TL& itemList, const T& item)
@@ -460,14 +685,9 @@ namespace SharedUtil
     //
     class SColor
     {
-        // No shifting allowed to access the color channel information
-        void operator>>(int) const;
-        void operator<<(int) const;
-        void operator>>=(int);
-        void operator<<=(int);
-
     public:
-        union {
+        union
+        {
             struct
             {
                 unsigned char B, G, R, A;
@@ -475,7 +695,8 @@ namespace SharedUtil
             unsigned long ulARGB;
         };
 
-        SColor() {}
+        SColor() : ulARGB(0) {}
+
         SColor(unsigned long ulValue) { ulARGB = ulValue; }
 
         operator unsigned long() const { return ulARGB; }
@@ -547,6 +768,20 @@ namespace SharedUtil
     inline SColor COLOR_RGBA(unsigned char R, unsigned char G, unsigned char B, unsigned char A) { return SColorRGBA(R, G, B, A); }
     inline SColor COLOR_ARGB(unsigned char A, unsigned char R, unsigned char G, unsigned char B) { return SColorRGBA(R, G, B, A); }
     inline SColor COLOR_ABGR(unsigned char A, unsigned char B, unsigned char G, unsigned char R) { return SColorRGBA(R, G, B, A); }
+
+    //
+    // Convert tocolor value to SColor
+    //
+    inline SColor TOCOLOR2SCOLOR(std::uint32_t colorValue)
+    {
+        SColor color;
+        color.R = static_cast<std::uint8_t>((colorValue >> 16) & BYTE_MASK(8));
+        color.G = static_cast<std::uint8_t>((colorValue >> 8) & BYTE_MASK(8));
+        color.B = static_cast<std::uint8_t>((colorValue >> 0) & BYTE_MASK(8));
+        color.A = static_cast<std::uint8_t>((colorValue >> 24) & BYTE_MASK(8));
+
+        return color;
+    }
 
     //
     // Cross platform critical section
@@ -660,26 +895,51 @@ namespace SharedUtil
     //
     // Fixed sized string buffer
     //
-    template <int MAX_LENGTH>
+    template <size_t MAX_LENGTH>
     class SFixedString
     {
         char szData[MAX_LENGTH + 1];
 
     public:
-        SFixedString() { szData[0] = 0; }
+        constexpr SFixedString() { szData[0] = 0; }
 
         // In
-        SFixedString& operator=(const char* szOther)
+        constexpr SFixedString& Assign(const char* szOther, size_t len)
         {
-            STRNCPY(szData, szOther, MAX_LENGTH + 1);
+            STRNCPY(szData, szOther, len + 1);
             return *this;
         }
 
+        constexpr SFixedString& operator=(const char* szOther)
+        {
+            Assign(szOther, MAX_LENGTH + 1);
+            return *this;
+        }
+#ifdef __cpp_lib_string_view
+        constexpr SFixedString& operator=(std::string_view other)
+        {
+            Assign(other.data(), other.length() + 1);
+            return *this;
+        }
+#endif
+
+#ifdef __cpp_lib_string_view
         // Out
-        operator const char*() const { return szData; }
+        constexpr operator std::string_view() const { return {szData}; }
+#endif
+        constexpr       operator const char*() const { return szData; }
+        constexpr char* Data() { return &szData[0]; }
+
+        constexpr size_t GetMaxLength() const { return MAX_LENGTH; }
+        size_t           GetLength() const { return strlen(szData); }
 
         // Shake it all about
-        void Encrypt();
+        void           Encrypt();
+        constexpr bool Empty() { return szData[0] == 0; }
+        constexpr void Clear() const { szData[0] = 0; }
+
+        // Returns a pointer to a null-terminated character array
+        const char* c_str() const noexcept { return &szData[0]; }
     };
 
     ///////////////////////////////////////////////////////////////
@@ -1225,10 +1485,6 @@ namespace SharedUtil
     //
     // enum reflection shenanigans
     //
-    enum eDummy
-    {
-    };
-
     template <class T>
     struct CEnumInfo
     {
@@ -1238,7 +1494,7 @@ namespace SharedUtil
             const char* szName;
         };
 
-        CEnumInfo(const SString& strTypeName, const SEnumItem* pItemList, uint uiAmount, eDummy defaultValue, const SString& strDefaultName)
+        CEnumInfo(const SString& strTypeName, const SEnumItem* pItemList, uint uiAmount, T defaultValue, const SString& strDefaultName)
         {
             m_strTypeName = strTypeName;
             m_strDefaultName = strDefaultName;
@@ -1246,23 +1502,23 @@ namespace SharedUtil
             for (uint i = 0; i < uiAmount; i++)
             {
                 const SEnumItem& item = pItemList[i];
-                m_ValueMap[item.szName] = (eDummy)item.iValue;
-                m_NameMap[(eDummy)item.iValue] = item.szName;
+                m_ValueMap[item.szName] = item.iValue;
+                m_NameMap[item.iValue] = item.szName;
             }
         }
 
-        bool ValueValid(eDummy value) const { return MapContains(m_NameMap, value); }
+        bool ValueValid(T value) const { return MapContains(m_NameMap, value); }
 
-        const SString& FindName(eDummy value) const
+        const SString& FindName(T value) const
         {
             if (const SString* pName = MapFind(m_NameMap, value))
                 return *pName;
             return m_strDefaultName;
         }
 
-        bool FindValue(const SString& strName, eDummy& outResult) const
+        bool FindValue(const SString& strName, T& outResult) const
         {
-            const eDummy* pValue;
+            const T* pValue;
             if ((pValue = MapFind(m_ValueMap, strName)) || (pValue = MapFind(m_ValueMap, strName.ToLower())))
             {
                 outResult = *pValue;
@@ -1276,45 +1532,40 @@ namespace SharedUtil
 
         SString                   m_strTypeName;
         SString                   m_strDefaultName;
-        eDummy                    m_DefaultValue;
-        std::map<SString, eDummy> m_ValueMap;
-        std::map<eDummy, SString> m_NameMap;
+        T                         m_DefaultValue;
+        std::map<SString, T>      m_ValueMap;
+        std::map<T, SString>      m_NameMap;
     };
 
-    #define DECLARE_ENUM2(T, U) \
-        CEnumInfo<U>*          GetEnumInfo     ( const T* ); \
-        inline const SString&  EnumToString    ( const T& value )                           { return GetEnumInfo ( (T*)0 )->FindName    ( (eDummy)value ); }\
-        inline bool            StringToEnum    ( const SString& strName, T& outResult )     { return GetEnumInfo ( (T*)0 )->FindValue   ( strName, (eDummy&)outResult ); }\
+    #define DECLARE_ENUM(T) \
+        CEnumInfo<T>*          GetEnumInfo     ( const T* ); \
+        inline const SString&  EnumToString    ( const T& value )                           { return GetEnumInfo ( (T*)0 )->FindName    ( value ); }\
+        inline bool            StringToEnum    ( const SString& strName, T& outResult )     { return GetEnumInfo ( (T*)0 )->FindValue   ( strName, outResult ); }\
         inline const SString&  GetEnumTypeName ( const T& )                                 { return GetEnumInfo ( (T*)0 )->GetTypeName (); }\
-        inline bool            EnumValueValid  ( const T& value )                           { return GetEnumInfo ( (T*)0 )->ValueValid  ( (eDummy)value ); }\
+        inline bool            EnumValueValid  ( const T& value )                           { return GetEnumInfo ( (T*)0 )->ValueValid  ( value ); }\
 
-    #define IMPLEMENT_ENUM_BEGIN2(T, U) \
-        CEnumInfo<U>* GetEnumInfo( const T* ) \
+    #define IMPLEMENT_ENUM_BEGIN(T) \
+        CEnumInfo<T>* GetEnumInfo( const T* ) \
         { \
-            using CEnumInfo = CEnumInfo<U>; \
+            using CEnumInfo = CEnumInfo<T>; \
             static const CEnumInfo::SEnumItem items[] = {
 
     #define IMPLEMENT_ENUM_END(name) \
-        IMPLEMENT_ENUM_END_DEFAULTS(name,0,"")
+        IMPLEMENT_ENUM_END_DEFAULTS(name, static_cast<std::remove_reference_t<decltype(std::declval<CEnumInfo::SEnumItem>().iValue)>>(0), "")
 
     #define IMPLEMENT_ENUM_END_DEFAULTS(name,defvalue,defname) \
                             }; \
-            static CEnumInfo info( name, items, NUMELMS(items),(eDummy)(defvalue),defname ); \
+            static CEnumInfo info(name, items, NUMELMS(items), defvalue, defname); \
             return &info; \
         }
 
     #define ADD_ENUM(value,name) {value, name},
     #define ADD_ENUM1(value)     {value, #value},
 
-    // enum
-    #define DECLARE_ENUM(T)                                             DECLARE_ENUM2(T, int)
-    #define IMPLEMENT_ENUM_BEGIN(T)                                     IMPLEMENT_ENUM_BEGIN2(T, int)
-
     // enum class
-    #define DECLARE_ENUM_CLASS(T)                                       DECLARE_ENUM2(T, T)
-    #define IMPLEMENT_ENUM_CLASS_BEGIN(T)                               IMPLEMENT_ENUM_BEGIN2(T, T)
+    #define DECLARE_ENUM_CLASS(T)                                       DECLARE_ENUM(T)
+    #define IMPLEMENT_ENUM_CLASS_BEGIN(T)                               IMPLEMENT_ENUM_BEGIN(T)
     #define IMPLEMENT_ENUM_CLASS_END(name)                              IMPLEMENT_ENUM_END(name)
-    #define IMPLEMENT_ENUM_CLASS_END_DEFAULTS(name,defvalue,defname)    IMPLEMENT_ENUM_END_DEFAULTS(name,defvalue,defname)
 
     //
     // Fast wildcard matching
@@ -1520,37 +1771,6 @@ namespace SharedUtil
 
     ///////////////////////////////////////////////////////////////
     //
-    // CRefCountableST
-    //
-    // Reference counting base class
-    //
-    ///////////////////////////////////////////////////////////////
-    class CRefCountableST
-    {
-        int m_iRefCount;
-
-    protected:
-        virtual ~CRefCountableST() {}
-
-    public:
-        CRefCountableST() : m_iRefCount(1) {}
-
-        void AddRef() { ++m_iRefCount; }
-
-        void Release()
-        {
-            assert(m_iRefCount > 0);
-            bool bLastRef = --m_iRefCount == 0;
-
-            if (!bLastRef)
-                return;
-
-            delete this;
-        }
-    };
-
-    ///////////////////////////////////////////////////////////////
-    //
     // CRefCountable
     //
     // Thread safe reference counting base class
@@ -1661,7 +1881,7 @@ namespace SharedUtil
 
         virtual ~CRefedPointer() { SAFE_DELETE(pData); }
         CRefedPointer(const CRefedPointer<T>& other);
-        CRefedPointer<T>& operator=(const CRefedPointer<T>& other);
+        CRefedPointer<T>& operator*(const CRefedPointer<T>& other);
 
     public:
         CRefedPointer() { pData = new T(); }

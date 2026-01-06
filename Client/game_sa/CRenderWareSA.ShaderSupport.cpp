@@ -5,13 +5,19 @@
  *  FILE:
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *  RenderWare is © Criterion Software
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <core/CCoreInterface.h>
+#include "CGameSA.h"
 #include "CRenderWareSA.ShaderMatching.h"
+#include "CRenderWareSA.ShaderSupport.h"
+
+extern CCoreInterface* g_pCore;
+extern CGameSA*        pGame;
 
 #define ADDR_CCustomCarPlateMgr_CreatePlateTexture_TextureSetName        0x06FDF40
 #define ADDR_CCustomRoadsignMgr_CreateRoadsignTexture_TextureSetName     0x06FED49
@@ -79,17 +85,19 @@ __declspec(noinline) void _cdecl OnStreamingAddedTxd(DWORD dwTxdId)
 }
 
 // called from streaming on TXD create
-void _declspec(naked) HOOK_CTxdStore_SetupTxdParent()
+static void __declspec(naked) HOOK_CTxdStore_SetupTxdParent()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         // Hooked from 731D55  6 bytes
 
         // eax - txd id
         pushad
-        push eax
-        call OnStreamingAddedTxd
-        add esp, 4
+        push    eax
+        call    OnStreamingAddedTxd
+        add     esp, 4
         popad
 
         // orig
@@ -112,17 +120,19 @@ __declspec(noinline) void _cdecl OnStreamingRemoveTxd(DWORD dwTxdId)
 }
 
 // called from streaming on TXD destroy
-void _declspec(naked) HOOK_CTxdStore_RemoveTxd()
+static void __declspec(naked) HOOK_CTxdStore_RemoveTxd()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         // Hooked from 731E90  6 bytes
 
         // esi - txd id + 20000
         pushad
-        push esi
-        call OnStreamingRemoveTxd
-        add esp, 4
+        push    esi
+        call    OnStreamingRemoveTxd
+        add     esp, 4
         popad
 
         // orig
@@ -177,15 +187,23 @@ void CRenderWareSA::PulseWorldTextureWatch()
 
             // Get list of texture names and data to add
 
-            // Note: If txd has been unloaded since, textureList will be empty
             std::vector<RwTexture*> textureList;
             GetTxdTextures(textureList, action.usTxdId);
 
             for (std::vector<RwTexture*>::iterator iter = textureList.begin(); iter != textureList.end(); iter++)
             {
                 RwTexture*  texture = *iter;
+                
+                // Validate texture pointer (TXD could unload mid-iteration)
+                if (!texture || !SharedUtil::IsReadablePointer(texture, sizeof(RwTexture)))
+                    continue;
+                
                 const char* szTextureName = texture->name;
-                CD3DDUMMY*  pD3DData = texture->raster ? (CD3DDUMMY*)texture->raster->renderResource : NULL;
+                
+                // Check raster pointer
+                CD3DDUMMY*  pD3DData = (texture->raster && SharedUtil::IsReadablePointer(texture->raster, sizeof(RwRaster)))
+                    ? (CD3DDUMMY*)texture->raster->renderResource : NULL;
+                
                 if (!MapContains(m_SpecialTextures, texture))
                     StreamingAddedTexture(action.usTxdId, szTextureName, pD3DData);
             }
@@ -201,6 +219,8 @@ void CRenderWareSA::PulseWorldTextureWatch()
     }
 
     ms_txdStreamEventList.clear();
+
+    ProcessPendingIsolatedTxdParents();
     TIMING_CHECKPOINT("-TextureWatch");
 }
 
@@ -209,11 +229,18 @@ void CRenderWareSA::PulseWorldTextureWatch()
 // CRenderWareSA::StreamingAddedTexture
 //
 // Called when a TXD is loaded.
-// Create a texinfo for the texture
+// Create a texinfo for the texture.
+// Note: We register textures with their actual GTA internal name (e.g., "#emap").
+// The pattern matching in AppendAdditiveMatch/AppendSubtractiveMatch handles
+// mapping external names in scripts (e.g. "remap*") to internal names.
 //
 ////////////////////////////////////////////////////////////////
 void CRenderWareSA::StreamingAddedTexture(ushort usTxdId, const SString& strTextureName, CD3DDUMMY* pD3DData)
 {
+    // Skip textures without valid D3D data or name - shader matching requires both
+    if (!pD3DData || strTextureName.empty())
+        return;
+
     STexInfo* pTexInfo = CreateTexInfo(usTxdId, strTextureName, pD3DData);
     OnTextureStreamIn(pTexInfo);
 }
@@ -235,7 +262,7 @@ void CRenderWareSA::StreamingRemovedTxd(ushort usTxdId)
     for (ConstIterType iter = range.first; iter != range.second;)
     {
         STexInfo* pTexInfo = iter->second;
-        if (pTexInfo->texTag == usTxdId)
+        if (pTexInfo && pTexInfo->texTag == usTxdId)
         {
             OnTextureStreamOut(pTexInfo);
             DestroyTexInfo(pTexInfo);
@@ -250,6 +277,50 @@ void CRenderWareSA::StreamingRemovedTxd(ushort usTxdId)
 
 ////////////////////////////////////////////////////////////////
 //
+// CRenderWareSA::RemoveStreamingTexture
+//
+// Remove a single texture that was added via StreamingAddedTexture.
+// Finds the texture by matching TXD ID and D3D data pointer.
+//
+////////////////////////////////////////////////////////////////
+void CRenderWareSA::RemoveStreamingTexture(unsigned short usTxdId, CD3DDUMMY* pD3DData)
+{
+    if (!pD3DData)
+        return;
+
+    typedef std::multimap<ushort, STexInfo*>::iterator IterType;
+    std::pair<IterType, IterType> range = m_TexInfoMap.equal_range(usTxdId);
+    for (IterType iter = range.first; iter != range.second;)
+    {
+        STexInfo* pTexInfo = iter->second;
+        if (pTexInfo && pTexInfo->pD3DData == pD3DData)
+        {
+            OnTextureStreamOut(pTexInfo);
+            DestroyTexInfo(pTexInfo);
+            m_TexInfoMap.erase(iter++);
+            return;  // Only one entry per D3D data
+        }
+        else
+            ++iter;
+    }
+}
+
+////////////////////////////////////////////////////////////////
+//
+// CRenderWareSA::IsTexInfoRegistered
+//
+// Check if a D3D data pointer is already registered in the shader system.
+//
+////////////////////////////////////////////////////////////////
+bool CRenderWareSA::IsTexInfoRegistered(CD3DDUMMY* pD3DData) const
+{
+    if (!pD3DData)
+        return false;
+    return MapContains(m_D3DDataTexInfoMap, pD3DData);
+}
+
+////////////////////////////////////////////////////////////////
+//
 // CRenderWareSA::ScriptAddedTxd
 //
 // Called when a TXD is loaded outside of streaming
@@ -259,13 +330,28 @@ void CRenderWareSA::StreamingRemovedTxd(ushort usTxdId)
 void CRenderWareSA::ScriptAddedTxd(RwTexDictionary* pTxd)
 {
     TIMING_CHECKPOINT("+ScriptAddedTxd");
+
+    // Validate TXD pointer before iterating
+    if (!pTxd || !SharedUtil::IsReadablePointer(pTxd, sizeof(RwTexDictionary)))
+    {
+        TIMING_CHECKPOINT("-ScriptAddedTxd");
+        return;
+    }
+
     std::vector<RwTexture*> textureList;
     GetTxdTextures(textureList, pTxd);
     for (std::vector<RwTexture*>::iterator iter = textureList.begin(); iter != textureList.end(); iter++)
     {
         RwTexture*  texture = *iter;
+        if (!texture || !SharedUtil::IsReadablePointer(texture, sizeof(RwTexture)))
+            continue;
+
         const char* szTextureName = texture->name;
-        CD3DDUMMY*  pD3DData = texture->raster ? (CD3DDUMMY*)texture->raster->renderResource : NULL;
+        CD3DDUMMY*  pD3DData = (texture->raster && SharedUtil::IsReadablePointer(texture->raster, sizeof(RwRaster)))
+            ? (CD3DDUMMY*)texture->raster->renderResource : NULL;
+
+        if (!pD3DData || !szTextureName[0])
+            continue;
 
         // Added texture
         STexInfo* pTexInfo = CreateTexInfo(texture, szTextureName, pD3DData);
@@ -289,7 +375,7 @@ void CRenderWareSA::ScriptRemovedTexture(RwTexture* pTex)
     for (std::multimap<ushort, STexInfo*>::iterator iter = m_TexInfoMap.begin(); iter != m_TexInfoMap.end();)
     {
         STexInfo* pTexInfo = iter->second;
-        if (pTexInfo->texTag == pTex)
+        if (pTexInfo && pTexInfo->texTag == pTex)
         {
             OnTextureStreamOut(pTexInfo);
             DestroyTexInfo(pTexInfo);
@@ -310,12 +396,21 @@ void CRenderWareSA::ScriptRemovedTexture(RwTexture* pTex)
 ////////////////////////////////////////////////////////////////
 void CRenderWareSA::SpecialAddedTexture(RwTexture* texture, const char* szTextureName)
 {
+    if (!texture || !SharedUtil::IsReadablePointer(texture, sizeof(RwTexture)))
+        return;
+
     if (!szTextureName)
         szTextureName = texture->name;
+    if (!szTextureName || !szTextureName[0])
+        return;
+
+    CD3DDUMMY* pD3DData = (texture->raster && SharedUtil::IsReadablePointer(texture->raster, sizeof(RwRaster)))
+        ? (CD3DDUMMY*)texture->raster->renderResource : NULL;
+
+    if (!pD3DData)
+        return;
 
     OutputDebug(SString("Adding special texture %s", szTextureName));
-
-    CD3DDUMMY* pD3DData = texture->raster ? (CD3DDUMMY*)texture->raster->renderResource : NULL;
 
     // Added texture
     STexInfo* pTexInfo = CreateTexInfo(texture, szTextureName, pD3DData);
@@ -344,7 +439,7 @@ void CRenderWareSA::SpecialRemovedTexture(RwTexture* pTex)
     for (std::multimap<ushort, STexInfo*>::iterator iter = m_TexInfoMap.begin(); iter != m_TexInfoMap.end();)
     {
         STexInfo* pTexInfo = iter->second;
-        if (pTexInfo->texTag == pTex)
+        if (pTexInfo && pTexInfo->texTag == pTex)
         {
             OutputDebug(SString("     %s", *pTexInfo->strTextureName));
             OnTextureStreamOut(pTexInfo);
@@ -393,9 +488,15 @@ STexInfo* CRenderWareSA::CreateTexInfo(const STexTag& texTag, const SString& str
 ////////////////////////////////////////////////////////////////
 void CRenderWareSA::DestroyTexInfo(STexInfo* pTexInfo)
 {
-    // Remove from D3DData lookup map
-    if (MapFindRef(m_D3DDataTexInfoMap, pTexInfo->pD3DData) == pTexInfo)
+    if (!pTexInfo)
+        return;
+
+    // Only remove if this specific STexInfo is the registered one
+    STexInfo* pCurrentEntry = MapFindRef(m_D3DDataTexInfoMap, pTexInfo->pD3DData);
+    if (pCurrentEntry == pTexInfo)
+    {
         MapRemove(m_D3DDataTexInfoMap, pTexInfo->pD3DData);
+    }
 
     delete pTexInfo;
 }
@@ -460,6 +561,10 @@ SShaderItemLayers* CRenderWareSA::GetAppliedShaderForD3DData(CD3DDUMMY* pD3DData
 void CRenderWareSA::AppendAdditiveMatch(CSHADERDUMMY* pShaderData, CClientEntityBase* pClientEntity, const char* szTextureNameMatch, float fShaderPriority,
                                         bool bShaderLayered, int iTypeMask, uint uiShaderCreateTime, bool bShaderUsesVertexShader, bool bAppendLayers)
 {
+    // NULL or empty pattern would cause issues
+    if (!szTextureNameMatch || !szTextureNameMatch[0])
+        return;
+
     TIMING_CHECKPOINT("+AppendAddMatch");
 
     // Make previous versions usage of "CJ" work with new way
@@ -467,8 +572,52 @@ void CRenderWareSA::AppendAdditiveMatch(CSHADERDUMMY* pShaderData, CClientEntity
     if (strTextureNameMatch.CompareI("cj"))
         strTextureNameMatch = "cj_ped_*";
 
+    // Register the pattern as provided by script
     m_pMatchChannelManager->AppendAdditiveMatch(pShaderData, pClientEntity, strTextureNameMatch, fShaderPriority, bShaderLayered, iTypeMask, uiShaderCreateTime,
                                                 bShaderUsesVertexShader, bAppendLayers);
+
+    // Also register with internal texture name variant if pattern contains a known external name.
+    // This handles the case where script uses external names (e.g. "remap") but GTA internally
+    // renames textures (e.g., "#emap"). We register both patterns so the shader matches either.
+    // Handles: "remap", "remap*", "*remap*", "vehicleremap", etc.
+    SString strLower = strTextureNameMatch.ToLower();
+    bool bHasRemap = strLower.Contains("remap");
+    bool bHasWhite = strLower.Contains("white");
+    
+    // Check for "remap" anywhere in the pattern (case-insensitive)
+    if (bHasRemap)
+    {
+        SString strInternalPattern = strTextureNameMatch.ReplaceI("remap", "#emap");
+        // Only register if actually different (avoid duplicates)
+        if (strInternalPattern != strTextureNameMatch)
+        {
+            m_pMatchChannelManager->AppendAdditiveMatch(pShaderData, pClientEntity, strInternalPattern, fShaderPriority, bShaderLayered, iTypeMask, uiShaderCreateTime,
+                                                        bShaderUsesVertexShader, bAppendLayers);
+            
+            // If pattern also contains "white", register the doubly-transformed variant
+            // e.g., "white_remap*" -> "@hite_#emap*"
+            if (bHasWhite)
+            {
+                SString strBothInternal = strInternalPattern.ReplaceI("white", "@hite");
+                if (strBothInternal != strInternalPattern)
+                {
+                    m_pMatchChannelManager->AppendAdditiveMatch(pShaderData, pClientEntity, strBothInternal, fShaderPriority, bShaderLayered, iTypeMask, uiShaderCreateTime,
+                                                                bShaderUsesVertexShader, bAppendLayers);
+                }
+            }
+        }
+    }
+    // Check for "white" anywhere in the pattern (case-insensitive)
+    if (bHasWhite)
+    {
+        SString strInternalPattern = strTextureNameMatch.ReplaceI("white", "@hite");
+        if (strInternalPattern != strTextureNameMatch)
+        {
+            m_pMatchChannelManager->AppendAdditiveMatch(pShaderData, pClientEntity, strInternalPattern, fShaderPriority, bShaderLayered, iTypeMask, uiShaderCreateTime,
+                                                        bShaderUsesVertexShader, bAppendLayers);
+        }
+    }
+
     TIMING_CHECKPOINT("-AppendAddMatch");
 }
 
@@ -481,6 +630,10 @@ void CRenderWareSA::AppendAdditiveMatch(CSHADERDUMMY* pShaderData, CClientEntity
 ////////////////////////////////////////////////////////////////
 void CRenderWareSA::AppendSubtractiveMatch(CSHADERDUMMY* pShaderData, CClientEntityBase* pClientEntity, const char* szTextureNameMatch)
 {
+    // NULL or empty pattern would cause problems
+    if (!szTextureNameMatch || !szTextureNameMatch[0])
+        return;
+
     TIMING_CHECKPOINT("+AppendSubMatch");
 
     // Make previous versions usage of "CJ" work with new way
@@ -488,7 +641,41 @@ void CRenderWareSA::AppendSubtractiveMatch(CSHADERDUMMY* pShaderData, CClientEnt
     if (strTextureNameMatch.CompareI("cj"))
         strTextureNameMatch = "cj_ped_*";
 
+    // Register the pattern as provided by script
     m_pMatchChannelManager->AppendSubtractiveMatch(pShaderData, pClientEntity, strTextureNameMatch);
+
+    // Also register with internal texture name variant (same logic as AppendAdditiveMatch)
+    SString strLower = strTextureNameMatch.ToLower();
+    bool bHasRemap = strLower.Contains("remap");
+    bool bHasWhite = strLower.Contains("white");
+    
+    if (bHasRemap)
+    {
+        SString strInternalPattern = strTextureNameMatch.ReplaceI("remap", "#emap");
+        if (strInternalPattern != strTextureNameMatch)
+        {
+            m_pMatchChannelManager->AppendSubtractiveMatch(pShaderData, pClientEntity, strInternalPattern);
+            
+            // If pattern also contains "white", register the doubly-transformed variant
+            if (bHasWhite)
+            {
+                SString strBothInternal = strInternalPattern.ReplaceI("white", "@hite");
+                if (strBothInternal != strInternalPattern)
+                {
+                    m_pMatchChannelManager->AppendSubtractiveMatch(pShaderData, pClientEntity, strBothInternal);
+                }
+            }
+        }
+    }
+    if (bHasWhite)
+    {
+        SString strInternalPattern = strTextureNameMatch.ReplaceI("white", "@hite");
+        if (strInternalPattern != strTextureNameMatch)
+        {
+            m_pMatchChannelManager->AppendSubtractiveMatch(pShaderData, pClientEntity, strInternalPattern);
+        }
+    }
+
     TIMING_CHECKPOINT("-AppendSubMatch");
 }
 
@@ -501,6 +688,9 @@ void CRenderWareSA::AppendSubtractiveMatch(CSHADERDUMMY* pShaderData, CClientEnt
 ////////////////////////////////////////////////////////////////
 void CRenderWareSA::OnTextureStreamIn(STexInfo* pTexInfo)
 {
+    if (!pTexInfo)
+        return;
+    
     // Insert into all channels that match the name
     m_pMatchChannelManager->InsertTexture(pTexInfo);
 }
@@ -514,6 +704,9 @@ void CRenderWareSA::OnTextureStreamIn(STexInfo* pTexInfo)
 ////////////////////////////////////////////////////////////////
 void CRenderWareSA::OnTextureStreamOut(STexInfo* pTexInfo)
 {
+    if (!pTexInfo)
+        return;
+    
     m_pMatchChannelManager->RemoveTexture(pTexInfo);
 }
 
@@ -637,8 +830,6 @@ void CRenderWareSA::SetGTAVertexShadersEnabled(bool bEnable)
     m_bGTAVertexShadersEnabled = bEnable;
 
     DWORD pSkinAtomic = 0x07C7CD0;
-    if (pGame->GetGameVersion() != VERSION_US_10)
-        pSkinAtomic = 0x07C7D10;
 
     if (bEnable)
     {
@@ -683,16 +874,14 @@ __declspec(noinline) void OnMY_RwTextureSetName(DWORD dwAddrCalledFrom, RwTextur
 }
 
 // Hook info
-#define HOOKPOS_RwTextureSetName_US     0x7F38A0
-#define HOOKSIZE_RwTextureSetName_US    9
-#define HOOKPOS_RwTextureSetName_EU     0x7F38E0
-#define HOOKSIZE_RwTextureSetName_EU    9
-DWORD RETURN_RwTextureSetName_US = 0x7F38A9;
-DWORD RETURN_RwTextureSetName_EU = 0x7F38E9;
-DWORD RETURN_RwTextureSetName_BOTH = 0;
-void _declspec(naked) HOOK_RwTextureSetName()
+#define HOOKPOS_RwTextureSetName     0x7F38A0
+#define HOOKSIZE_RwTextureSetName    9
+DWORD RETURN_RwTextureSetName = 0x7F38A9;
+static void __declspec(naked) HOOK_RwTextureSetName()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         push    [esp+32+4*2]
@@ -704,7 +893,7 @@ void _declspec(naked) HOOK_RwTextureSetName()
 
         sub     esp, 8
         mov     ecx, ds:0x0C97B24
-        jmp     RETURN_RwTextureSetName_BOTH
+        jmp     RETURN_RwTextureSetName
     }
 }
 
@@ -721,16 +910,14 @@ __declspec(noinline) void OnMY_RwTextureDestroy_Mid(RwTexture* pTexture)
 }
 
 // Hook info
-#define HOOKPOS_RwTextureDestroy_Mid_US     0x07F3834
-#define HOOKSIZE_RwTextureDestroy_Mid_US    5
-#define HOOKPOS_RwTextureDestroy_Mid_EU     0x07F3874
-#define HOOKSIZE_RwTextureDestroy_Mid_EU    5
-DWORD RETURN_RwTextureDestroy_Mid_US = 0x07F3839;
-DWORD RETURN_RwTextureDestroy_Mid_EU = 0x07F3879;
-DWORD RETURN_RwTextureDestroy_Mid_BOTH = 0;
-void _declspec(naked) HOOK_RwTextureDestroy_Mid()
+#define HOOKPOS_RwTextureDestroy_Mid     0x07F3834
+#define HOOKSIZE_RwTextureDestroy_Mid    5
+DWORD RETURN_RwTextureDestroy_Mid = 0x07F3839;
+static void __declspec(naked) HOOK_RwTextureDestroy_Mid()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         push    esi
@@ -739,7 +926,7 @@ void _declspec(naked) HOOK_RwTextureDestroy_Mid()
         popad
 
         push    0x08E23CC
-        jmp     RETURN_RwTextureDestroy_Mid_BOTH
+        jmp     RETURN_RwTextureDestroy_Mid
     }
 }
 
@@ -769,16 +956,14 @@ __declspec(noinline) void OnMY_RwIm3DRenderIndexedPrimitive_Post(DWORD dwAddrCal
 }
 
 // Hook info
-#define HOOKPOS_RwIm3DRenderIndexedPrimitive_US     0x07EF550
-#define HOOKSIZE_RwIm3DRenderIndexedPrimitive_US    5
-#define HOOKPOS_RwIm3DRenderIndexedPrimitive_EU     0x07EF590
-#define HOOKSIZE_RwIm3DRenderIndexedPrimitive_EU    5
-DWORD RETURN_RwIm3DRenderIndexedPrimitive_US = 0x07EF555;
-DWORD RETURN_RwIm3DRenderIndexedPrimitive_EU = 0x07EF595;
-DWORD RETURN_RwIm3DRenderIndexedPrimitive_BOTH = 0;
-void _declspec(naked) HOOK_RwIm3DRenderIndexedPrimitive()
+#define HOOKPOS_RwIm3DRenderIndexedPrimitive     0x07EF550
+#define HOOKSIZE_RwIm3DRenderIndexedPrimitive    5
+DWORD RETURN_RwIm3DRenderIndexedPrimitive = 0x07EF555;
+static void __declspec(naked) HOOK_RwIm3DRenderIndexedPrimitive()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         push    [esp+32+4*0]
@@ -789,7 +974,7 @@ void _declspec(naked) HOOK_RwIm3DRenderIndexedPrimitive()
         push    [esp+4*3]
         push    [esp+4*3]
         push    [esp+4*3]
-        call inner
+        call    inner
         add     esp, 4*3
 
         pushad
@@ -798,9 +983,10 @@ void _declspec(naked) HOOK_RwIm3DRenderIndexedPrimitive()
         add     esp, 4*1
         popad
         retn
-inner:
+
+        inner:
         mov     eax, ds:0x0C9C078
-        jmp     RETURN_RwIm3DRenderIndexedPrimitive_BOTH
+        jmp     RETURN_RwIm3DRenderIndexedPrimitive
     }
 }
 
@@ -822,16 +1008,14 @@ __declspec(noinline) void OnMY_RwIm3DRenderPrimitive_Post(DWORD dwAddrCalledFrom
 }
 
 // Hook info
-#define HOOKPOS_RwIm3DRenderPrimitive_US    0x07EF6B0
-#define HOOKSIZE_RwIm3DRenderPrimitive_US   6
-#define HOOKPOS_RwIm3DRenderPrimitive_EU    0x07EF6F0
-#define HOOKSIZE_RwIm3DRenderPrimitive_EU   6
-DWORD RETURN_RwIm3DRenderPrimitive_US = 0x07EF6B6;
-DWORD RETURN_RwIm3DRenderPrimitive_EU = 0x07EF6F6;
-DWORD RETURN_RwIm3DRenderPrimitive_BOTH = 0;
-void _declspec(naked) HOOK_RwIm3DRenderPrimitive()
+#define HOOKPOS_RwIm3DRenderPrimitive    0x07EF6B0
+#define HOOKSIZE_RwIm3DRenderPrimitive   6
+DWORD RETURN_RwIm3DRenderPrimitive = 0x07EF6B6;
+static void __declspec(naked) HOOK_RwIm3DRenderPrimitive()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         push    [esp+32+4*0]
@@ -842,7 +1026,7 @@ void _declspec(naked) HOOK_RwIm3DRenderPrimitive()
         push    [esp+4*3]
         push    [esp+4*3]
         push    [esp+4*3]
-        call inner
+        call    inner
         add     esp, 4*3
 
         pushad
@@ -851,9 +1035,10 @@ void _declspec(naked) HOOK_RwIm3DRenderPrimitive()
         add     esp, 4*1
         popad
         retn
-inner:
+
+        inner:
         mov     ecx, ds:0x0C97B24
-        jmp     RETURN_RwIm3DRenderPrimitive_BOTH
+        jmp     RETURN_RwIm3DRenderPrimitive
     }
 }
 
@@ -875,16 +1060,14 @@ __declspec(noinline) void OnMY_RwIm2DRenderIndexedPrimitive_Post(DWORD dwAddrCal
 }
 
 // Hook info
-#define HOOKPOS_RwIm2DRenderIndexedPrimitive_US     0x0734EA1
-#define HOOKSIZE_RwIm2DRenderIndexedPrimitive_US    5
-#define HOOKPOS_RwIm2DRenderIndexedPrimitive_EU     0x0734EA1
-#define HOOKSIZE_RwIm2DRenderIndexedPrimitive_EU    5
-DWORD RETURN_RwIm2DRenderIndexedPrimitive_US = 0x0403927;
-DWORD RETURN_RwIm2DRenderIndexedPrimitive_EU = 0x0403937;
-DWORD RETURN_RwIm2DRenderIndexedPrimitive_BOTH = 0;
-void _declspec(naked) HOOK_RwIm2DRenderIndexedPrimitive()
+#define HOOKPOS_RwIm2DRenderIndexedPrimitive     0x0734EA1
+#define HOOKSIZE_RwIm2DRenderIndexedPrimitive    5
+DWORD RETURN_RwIm2DRenderIndexedPrimitive = 0x0403927;
+static void __declspec(naked) HOOK_RwIm2DRenderIndexedPrimitive()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         push    [esp+32+4*0]
@@ -897,7 +1080,7 @@ void _declspec(naked) HOOK_RwIm2DRenderIndexedPrimitive()
         push    [esp+4*5]
         push    [esp+4*5]
         push    [esp+4*5]
-        call inner
+        call    inner
         add     esp, 4*5
 
         pushad
@@ -907,8 +1090,8 @@ void _declspec(naked) HOOK_RwIm2DRenderIndexedPrimitive()
         popad
         retn
 
-inner:
-        jmp     RETURN_RwIm2DRenderIndexedPrimitive_BOTH
+        inner:
+        jmp     RETURN_RwIm2DRenderIndexedPrimitive
     }
 }
 
@@ -933,9 +1116,11 @@ __declspec(noinline) void OnMY_RwIm2DRenderPrimitive_Post(DWORD dwAddrCalledFrom
 #define HOOKPOS_RwIm2DRenderPrimitive                0x0734E90
 #define HOOKSIZE_RwIm2DRenderPrimitive               5
 DWORD RETURN_RwIm2DRenderPrimitive = 0x0734E95;
-void _declspec(naked) HOOK_RwIm2DRenderPrimitive()
+static void __declspec(naked) HOOK_RwIm2DRenderPrimitive()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         push    [esp+32+4*0]
@@ -946,7 +1131,7 @@ void _declspec(naked) HOOK_RwIm2DRenderPrimitive()
         push    [esp+4*3]
         push    [esp+4*3]
         push    [esp+4*3]
-        call inner
+        call    inner
         add     esp, 4*3
 
         pushad
@@ -956,7 +1141,7 @@ void _declspec(naked) HOOK_RwIm2DRenderPrimitive()
         popad
         retn
 
-inner:
+        inner:
         mov     eax, ds:0x0C97B24
         jmp     RETURN_RwIm2DRenderPrimitive
     }

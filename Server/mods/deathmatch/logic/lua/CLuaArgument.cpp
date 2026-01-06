@@ -5,11 +5,18 @@
  *  FILE:        mods/deathmatch/logic/lua/CLuaArgument.cpp
  *  PURPOSE:     Lua argument handler class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLuaArgument.h"
+#include "CLuaArguments.h"
+#include "LuaCommon.h"
+#include "CGame.h"
+#include "CElementIDs.h"
+#include "CScriptDebugging.h"
+#include "CResourceManager.h"
 
 extern CGame* g_pGame;
 
@@ -318,11 +325,32 @@ void CLuaArgument::ReadNumber(double dNumber)
     m_Number = dNumber;
 }
 
-void CLuaArgument::ReadString(const std::string& strString)
+void CLuaArgument::ReadString(const std::string& string)
 {
     m_iType = LUA_TSTRING;
     DeleteTableData();
-    m_strString = strString;
+    m_strString = string;
+}
+
+void CLuaArgument::ReadString(const std::string_view& string)
+{
+    m_iType = LUA_TSTRING;
+    DeleteTableData();
+    m_strString = string;
+}
+
+void CLuaArgument::ReadString(const CStringName& string)
+{
+    m_iType = LUA_TSTRING;
+    DeleteTableData();
+    m_strString = string.ToString();
+}
+
+void CLuaArgument::ReadString(const char* string)
+{
+    m_iType = LUA_TSTRING;
+    DeleteTableData();
+    m_strString = string;
 }
 
 void CLuaArgument::ReadElement(CElement* pElement)
@@ -455,7 +483,7 @@ bool CLuaArgument::ReadFromBitStream(NetBitStreamInterface& bitStream, std::vect
             case LUA_TTABLE:
             {
                 m_pTableData = new CLuaArguments();
-                if(!m_pTableData->ReadFromBitStream(bitStream, pKnownTables))
+                if (!m_pTableData->ReadFromBitStream(bitStream, pKnownTables))
                     return false;
                 m_bWeakTableRef = false;
                 m_iType = LUA_TTABLE;
@@ -512,7 +540,7 @@ bool CLuaArgument::ReadFromBitStream(NetBitStreamInterface& bitStream, std::vect
                 uint uiLength;
                 if (bitStream.ReadCompressed(uiLength) && uiLength > 0)
                 {
-                    if(!bitStream.CanReadNumberOfBytes(uiLength))
+                    if (!bitStream.CanReadNumberOfBytes(uiLength))
                         return false;
 
                     bitStream.AlignReadToByteBoundary();
@@ -715,6 +743,11 @@ bool CLuaArgument::WriteToBitStream(NetBitStreamInterface& bitStream, CFastHashM
 
     // Success
     return true;
+}
+
+bool CLuaArgument::IsTable() const noexcept
+{
+    return m_iType == LUA_TTABLE && m_pTableData && (m_pTableData->Count() % 2) == 0;
 }
 
 void CLuaArgument::LogUnableToPacketize(const char* szMessage) const
@@ -975,7 +1008,7 @@ bool CLuaArgument::ReadFromJSONObject(json_object* object, std::vector<CLuaArgum
                 m_iType = LUA_TNIL;
                 break;
             case json_type_boolean:
-                if (json_object_get_boolean(object) == TRUE)
+                if (json_object_get_boolean(object))
                     ReadBool(true);
                 else
                     ReadBool(false);

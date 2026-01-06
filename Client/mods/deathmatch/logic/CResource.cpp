@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CResource.cpp
  *  PURPOSE:     Resource object
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -68,6 +68,11 @@ CResource::CResource(unsigned short usNetID, const char* szResourceName, CClient
     m_pResourceIFPRoot = new CClientDummy(g_pClientGame->GetManager(), INVALID_ELEMENT_ID, "ifproot");
     m_pResourceIFPRoot->MakeSystemEntity();
 
+    // Create our IMG root element. We set its parent when we're loaded.
+    // Make it a system entity so nothing but us can delete it.
+    m_pResourceIMGRoot = new CClientDummy(g_pClientGame->GetManager(), INVALID_ELEMENT_ID, "imgroot");
+    m_pResourceIMGRoot->MakeSystemEntity();
+
     m_strResourceDirectoryPath = SString("%s/resources/%s", g_pClientGame->GetFileCacheRoot(), *m_strResourceName);
     m_strResourcePrivateDirectoryPath = PathJoin(CServerIdManager::GetSingleton()->GetConnectionPrivateDirectory(), m_strResourceName);
 
@@ -89,6 +94,9 @@ CResource::CResource(unsigned short usNetID, const char* szResourceName, CClient
 
 CResource::~CResource()
 {
+    // Remove refrences from requested models
+    m_modelStreamer.ReleaseAll();
+
     // Deallocate all models that this resource allocated earlier
     g_pClientGame->GetManager()->GetModelManager()->DeallocateModelsAllocatedByResource(this);
 
@@ -106,7 +114,23 @@ CResource::~CResource()
 
     // Remove all keybinds on this VM
     g_pClientGame->GetScriptKeyBinds()->RemoveAllKeys(m_pLuaVM);
-    g_pCore->GetKeyBinds()->SetAllCommandsActive(m_strResourceName, false);
+    
+    // Remove all resource-specific command bindings while preserving user bindings
+    CKeyBindsInterface* pKeyBinds = g_pCore->GetKeyBinds();
+    pKeyBinds->SetAllCommandsActive(m_strResourceName, false);
+    
+    // Additional cleanup: remove any remaining resource bindings that weren't caught by SetAllCommandsActive
+    for (auto& bind : *pKeyBinds)
+    {
+        if (bind->type == KeyBindType::COMMAND)
+        {
+            auto commandBind = static_cast<CCommandBind*>(bind.get());
+            if (commandBind->context == BindingContext::RESOURCE && commandBind->resource == m_strResourceName)
+            {
+                pKeyBinds->Remove(commandBind);
+            }
+        }
+    }
 
     // Destroy the txd root so all dff elements are deleted except those moved out
     g_pClientGame->GetElementDeleter()->DeleteRecursive(m_pResourceTXDRoot);
@@ -115,6 +139,10 @@ CResource::~CResource()
     // Destroy the ifp root so all ifp elements are deleted except those moved out
     g_pClientGame->GetElementDeleter()->DeleteRecursive(m_pResourceIFPRoot);
     m_pResourceIFPRoot = NULL;
+
+    // Destroy the img root so all img elements are deleted except those moved out
+    g_pClientGame->GetElementDeleter()->DeleteRecursive(m_pResourceIMGRoot);
+    m_pResourceIMGRoot = NULL;
 
     // Destroy the ddf root so all dff elements are deleted except those moved out
     g_pClientGame->GetElementDeleter()->DeleteRecursive(m_pResourceDFFEntity);
@@ -246,7 +274,7 @@ void CResource::Load()
         m_pResourceTXDRoot->SetParent(m_pResourceEntity);
     }
 
-    CLogger::LogPrintf("> Starting resource '%s'", *m_strResourceName);
+    CLogger::LogPrintf("> Starting resource '%s'\n", *m_strResourceName);
 
     // Flag resource files as readable
     for (std::list<CResourceConfigItem*>::iterator iter = m_ConfigFiles.begin(); iter != m_ConfigFiles.end(); ++iter)
@@ -266,15 +294,16 @@ void CResource::Load()
         }
     }
 
-    // Load the no cache scripts first
-    for (std::list<SNoClientCacheScript>::iterator iter = m_NoClientCacheScriptList.begin(); iter != m_NoClientCacheScriptList.end(); ++iter)
+    for (auto& list = m_NoClientCacheScriptList; !list.empty(); list.pop_front())
     {
         DECLARE_PROFILER_SECTION(OnPreLoadNoClientCacheScript)
-        const SNoClientCacheScript& item = *iter;
+
+        auto& item = list.front();
         GetVM()->LoadScriptFromBuffer(item.buffer.GetData(), item.buffer.GetSize(), item.strFilename);
+        item.buffer.ZeroClear();
+
         DECLARE_PROFILER_SECTION(OnPostLoadNoClientCacheScript)
     }
-    m_NoClientCacheScriptList.clear();
 
     // Load the files that are queued in the list "to be loaded"
     list<CResourceFile*>::iterator iter = m_ResourceFiles.begin();
@@ -304,10 +333,7 @@ void CResource::Load()
         else if (pResourceFile->IsAutoDownload())
         {
             // Check the file contents
-            if (CChecksum::GenerateChecksumFromFileUnsafe(pResourceFile->GetName()) == pResourceFile->GetServerChecksum())
-            {
-            }
-            else
+            if (CChecksum::GenerateChecksumFromFileUnsafe(pResourceFile->GetName()) != pResourceFile->GetServerChecksum())
             {
                 HandleDownloadedFileTrouble(pResourceFile, false);
             }
@@ -325,6 +351,16 @@ void CResource::Load()
         CLuaArguments Arguments;
         Arguments.PushResource(this);
         m_pResourceEntity->CallEvent("onClientResourceStart", Arguments, true);
+
+        NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
+        if (pBitStream)
+        {
+            // Write resource net ID
+            pBitStream->Write(GetNetID());
+            pBitStream->Write(GetStartCounter());
+            g_pNet->SendPacket(PACKET_ID_PLAYER_RESOURCE_START, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
+            g_pNet->DeallocateNetBitStream(pBitStream);
+        }
     }
     else
         assert(0);
@@ -337,6 +373,19 @@ void CResource::Stop()
     CLuaArguments Arguments;
     Arguments.PushResource(this);
     m_pResourceEntity->CallEvent("onClientResourceStop", Arguments, true);
+
+    // When a custom application is used - reset discord stuff
+    const auto discord = g_pCore->GetDiscord();
+    if (discord && !discord->IsDiscordCustomDetailsDisallowed() && discord->GetDiscordResourceName() == m_strResourceName)
+    {
+        if (discord->IsDiscordRPCEnabled())
+        {
+            discord->ResetDiscordData();
+            discord->SetPresenceState(_("In-game"), false);
+            discord->SetPresenceStartTimestamp(static_cast<unsigned long>(time(nullptr)));
+            discord->UpdatePresence();
+        }
+    }
 }
 
 SString CResource::GetState()
@@ -377,11 +426,11 @@ void CResource::ShowCursor(bool bShow, bool bToggleControls)
 
         // Update our showing cursor state
         m_bShowingCursor = bShow;
-
-        // Show cursor if more than 0 resources wanting the cursor on
-        g_pCore->ForceCursorVisible(m_iShowingCursor > 0, bToggleControls);
-        g_pClientGame->SetCursorEventsEnabled(m_iShowingCursor > 0);
     }
+
+    // Always update cursor and controls state regardless of cursor visibility change
+    g_pCore->ForceCursorVisible(m_iShowingCursor > 0, bToggleControls);
+    g_pClientGame->SetCursorEventsEnabled(m_iShowingCursor > 0);
 }
 
 SString CResource::GetResourceDirectoryPath(eAccessType accessType, const SString& strMetaPath)
@@ -414,6 +463,19 @@ SString CResource::GetResourceDirectoryPath(eAccessType accessType, const SStrin
         return PathJoin(m_strResourcePrivateDirectoryPath, strMetaPath);
     }
     return PathJoin(m_strResourceDirectoryPath, strMetaPath);
+}
+
+CResourceFile* CResource::GetResourceFile(const SString& relativePath) const
+{
+    for (CResourceFile* resourceFile : m_ResourceFiles)
+    {
+        if (!stricmp(relativePath.c_str(), resourceFile->GetShortName()))
+        {
+            return resourceFile;
+        }
+    }
+
+    return nullptr;
 }
 
 void CResource::LoadNoClientCacheScript(const char* chunk, unsigned int len, const SString& strFilename)

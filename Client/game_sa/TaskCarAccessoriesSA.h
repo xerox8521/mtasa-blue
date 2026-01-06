@@ -5,14 +5,12 @@
  *  FILE:        game_sa/TaskCarAccessoriesSA.h
  *  PURPOSE:     Car accessories game tasks
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <game/TaskCarAccessories.h>
 
 #include "CVehicleSA.h"

@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CResource.h
  *  PURPOSE:     Resource object class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -15,6 +15,7 @@
 #include "CClientEntity.h"
 #include "CResourceConfigItem.h"
 #include "CResourceFile.h"
+#include "CResourceModelStreamer.h"
 #include "CElementGroup.h"
 #include <list>
 
@@ -69,6 +70,7 @@ public:
     void                 SetResourceEntity(CClientEntity* pEntity) { m_pResourceEntity = pEntity; }
     class CClientEntity* GetResourceDynamicEntity() { return m_pResourceDynamicEntity; }
     void                 SetResourceDynamicEntity(CClientEntity* pEntity) { m_pResourceDynamicEntity = pEntity; }
+    SString              GetResourceDirectoryPath() { return GetResourceDirectoryPath(eAccessType::ACCESS_PUBLIC, ""); }
     SString              GetResourceDirectoryPath(eAccessType accessType, const SString& strMetaPath);
     class CClientEntity* GetResourceGUIEntity() { return m_pResourceGUIEntity; }
     void                 SetResourceGUIEntity(CClientEntity* pEntity) { m_pResourceGUIEntity = pEntity; }
@@ -76,6 +78,9 @@ public:
     CClientEntity*       GetResourceDFFRoot() { return m_pResourceDFFEntity; };
     CClientEntity*       GetResourceTXDRoot() { return m_pResourceTXDRoot; };
     CClientEntity*       GetResourceIFPRoot() { return m_pResourceIFPRoot; };
+    CClientEntity*       GetResourceIMGRoot() { return m_pResourceIMGRoot; };
+
+    CResourceModelStreamer* GetResourceModelStreamer() { return &m_modelStreamer; };
 
     // This is to delete all the elements created in this resource that are created locally in this client
     void DeleteClientChildren();
@@ -88,19 +93,30 @@ public:
     std::list<CResourceFile*>::iterator IterBeginResourceFiles() { return m_ResourceFiles.begin(); }
     std::list<CResourceFile*>::iterator IterEndResourceFiles() { return m_ResourceFiles.end(); }
 
-    void           SetRemainingNoClientCacheScripts(unsigned short usRemaining) { m_usRemainingNoClientCacheScripts = usRemaining; }
-    void           LoadNoClientCacheScript(const char* chunk, unsigned int length, const SString& strFilename);
+    /**
+     * @brief Searches for a CResourceFile with the given relative path.
+     * @param relativePath Relative resource file path (from meta)
+     * @return A pointer to CResourceFile on success, null otherwise
+     */
+    CResourceFile* GetResourceFile(const SString& relativePath) const;
+
+    void               SetRemainingNoClientCacheScripts(unsigned short usRemaining) { m_usRemainingNoClientCacheScripts = usRemaining; }
+    void               LoadNoClientCacheScript(const char* chunk, unsigned int length, const SString& strFilename);
     const CMtaVersion& GetMinServerReq() const { return m_strMinServerReq; }
     const CMtaVersion& GetMinClientReq() const { return m_strMinClientReq; }
-    bool           IsOOPEnabled() { return m_bOOPEnabled; }
-    void           HandleDownloadedFileTrouble(CResourceFile* pResourceFile, bool bScript);
-    bool           IsWaitingForInitialDownloads();
-    int            GetDownloadPriorityGroup() { return m_iDownloadPriorityGroup; }
-    void           SetDownloadPriorityGroup(int iDownloadPriorityGroup) { m_iDownloadPriorityGroup = iDownloadPriorityGroup; }
+    bool               IsOOPEnabled() { return m_bOOPEnabled; }
+    void               HandleDownloadedFileTrouble(CResourceFile* pResourceFile, bool bScript);
+    bool               IsWaitingForInitialDownloads();
+    int                GetDownloadPriorityGroup() { return m_iDownloadPriorityGroup; }
+    void               SetDownloadPriorityGroup(int iDownloadPriorityGroup) { m_iDownloadPriorityGroup = iDownloadPriorityGroup; }
+
+    void         SetStartCounter(unsigned int startCounter) { m_startCounter = startCounter; }
+    unsigned int GetStartCounter() const noexcept { return m_startCounter; }
 
 private:
     unsigned short       m_usNetID;
     uint                 m_uiScriptID;
+    unsigned int         m_startCounter{};
     SString              m_strResourceName;
     CLuaMain*            m_pLuaVM;
     CLuaManager*         m_pLuaManager;
@@ -115,6 +131,7 @@ private:
     class CClientEntity* m_pResourceGUIEntity;
     class CClientEntity* m_pResourceTXDRoot;
     class CClientEntity* m_pResourceIFPRoot;
+    class CClientEntity* m_pResourceIMGRoot;
     unsigned short       m_usRemainingNoClientCacheScripts;
     bool                 m_bLoadAfterReceivingNoClientCacheScripts;
     CMtaVersion          m_strMinServerReq;
@@ -135,4 +152,6 @@ private:
     CFastHashSet<SString>                 m_exportedFunctions;
     CElementGroup*                        m_pDefaultElementGroup;            // stores elements created by scripts in this resource
     std::list<SNoClientCacheScript>       m_NoClientCacheScriptList;
+
+    CResourceModelStreamer m_modelStreamer{};
 };

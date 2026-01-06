@@ -5,24 +5,26 @@
  *  FILE:        game_sa/CSettingsSA.cpp
  *  PURPOSE:     Game settings
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <core/CCoreInterface.h>
+#include "CAudioEngineSA.h"
+#include "CCoronasSA.h"
+#include "CGameSA.h"
+#include "CHudSA.h"
+#include "CSettingsSA.h"
+#include "CCameraSA.h"
+#include "CCamSA.h"
+
+extern CCoreInterface* g_pCore;
+extern CGameSA*        pGame;
 
 static const float MOUSE_SENSITIVITY_MIN = 0.000312f;
 static const float MOUSE_SENSITIVITY_DEFAULT = 0.0025f;
 static const float MOUSE_SENSITIVITY_MAX = MOUSE_SENSITIVITY_DEFAULT * 2 - MOUSE_SENSITIVITY_MIN;
-
-unsigned long CSettingsSA::FUNC_GetNumVideoModes;
-unsigned long CSettingsSA::FUNC_GetVideoModeInfo;
-unsigned long CSettingsSA::FUNC_GetCurrentVideoMode;
-unsigned long CSettingsSA::FUNC_SetCurrentVideoMode;
-unsigned long CSettingsSA::FUNC_SetDrawDistance;
-unsigned long CSettingsSA::FUNC_GetNumSubSystems;
-unsigned long CSettingsSA::FUNC_GetCurrentSubSystem;
-unsigned long CSettingsSA::FUNC_SetSubSystem;
 
 #define VAR_CurVideoMode (*((uint*)(0x08D6220)))
 #define VAR_SavedVideoMode (*((uint*)(0x0BA6820)))
@@ -43,6 +45,9 @@ CSettingsSA::CSettingsSA()
     m_pInterface->bFrameLimiter = false;
     m_bVolumetricShadowsEnabled = false;
     m_bVolumetricShadowsSuspended = false;
+    m_bBlurViaScript = false;
+    m_bDynamicPedShadowsEnabled = false;
+    m_bCoronaReflectionsViaScript = false;
     SetAspectRatio(ASPECT_RATIO_4_3);
     HookInstall(HOOKPOS_GetFxQuality, (DWORD)HOOK_GetFxQuality, 5);
     HookInstall(HOOKPOS_StoreShadowForVehicle, (DWORD)HOOK_StoreShadowForVehicle, 9);
@@ -70,50 +75,27 @@ void CSettingsSA::SetWideScreenEnabled(bool bEnabled)
 
 unsigned int CSettingsSA::GetNumVideoModes()
 {
-    unsigned int uiReturn = 0;
-    _asm
-    {
-        call    FUNC_GetNumVideoModes
-        mov     uiReturn, eax
-    }
-    return uiReturn;
+    // RwEngineGetNumVideoModes
+    return ((unsigned int(__cdecl*)())0x7F2CC0)();
 }
 
 VideoMode* CSettingsSA::GetVideoModeInfo(VideoMode* modeInfo, unsigned int modeIndex)
 {
-    VideoMode* pReturn = NULL;
-    _asm
-    {
-        push    modeIndex
-        push    modeInfo
-        call    FUNC_GetVideoModeInfo
-        mov     pReturn, eax
-        add     esp, 8
-    }
-    return pReturn;
+    // RwEngineGetVideoModeInfo
+    return ((VideoMode*(__cdecl*)(VideoMode*, unsigned int))0x7F2CF0)(modeInfo, modeIndex);
 }
 
 unsigned int CSettingsSA::GetCurrentVideoMode()
 {
-    unsigned int uiReturn = 0;
-    _asm
-    {
-        call    FUNC_GetCurrentVideoMode
-        mov     uiReturn, eax
-    }
-    return uiReturn;
+    // RwEngineGetCurrentVideoMode
+    return ((unsigned int(__cdecl*)())0x7F2D20)();
 }
 
 void CSettingsSA::SetCurrentVideoMode(unsigned int modeIndex, bool bOnRestart)
 {
     if (!bOnRestart)
     {
-        _asm
-        {
-            push    modeIndex
-            call    FUNC_SetCurrentVideoMode
-            add     esp, 4
-        }
+        ((void(__cdecl*)(unsigned int))0x745C70)(modeIndex);
     }
     // Only update settings variables for fullscreen modes
     if (modeIndex)
@@ -122,34 +104,20 @@ void CSettingsSA::SetCurrentVideoMode(unsigned int modeIndex, bool bOnRestart)
 
 uint CSettingsSA::GetNumAdapters()
 {
-    unsigned int uiReturn = 0;
-    _asm
-    {
-        call    FUNC_GetNumSubSystems
-        mov     uiReturn, eax
-    }
-    return uiReturn;
+    // RwEngineGetNumSubSystems
+    return ((unsigned int(__cdecl*)())0x7F2C00)();
 }
 
 void CSettingsSA::SetAdapter(unsigned int uiAdapterIndex)
 {
-    _asm
-    {
-        push    uiAdapterIndex
-        call    FUNC_SetSubSystem
-        add     esp, 4
-    }
+    // RwEngineSetSubSystem
+    ((void(__cdecl*)(unsigned int))0x7F2C90)(uiAdapterIndex);
 }
 
 unsigned int CSettingsSA::GetCurrentAdapter()
 {
-    unsigned int uiReturn = 0;
-    _asm
-    {
-        call    FUNC_GetCurrentSubSystem
-        mov     uiReturn, eax
-    }
-    return uiReturn;
+    // RwEngineGetCurrentSubSystem
+    return ((unsigned int(__cdecl*)())0x7F2C60)();
 }
 
 unsigned char CSettingsSA::GetRadioVolume()
@@ -182,7 +150,7 @@ unsigned int CSettingsSA::GetUsertrackMode()
 
 void CSettingsSA::SetUsertrackMode(unsigned int uiMode)
 {
-    m_pInterface->ucUsertrackMode = uiMode;
+    m_pInterface->ucUsertrackMode = static_cast<unsigned char>(uiMode);
 }
 
 bool CSettingsSA::IsUsertrackAutoScan()
@@ -226,12 +194,7 @@ float CSettingsSA::GetDrawDistance()
 
 void CSettingsSA::SetDrawDistance(float fDistance)
 {
-    _asm
-    {
-        push    fDistance
-        call    FUNC_SetDrawDistance
-        add     esp, 4
-    }
+    MemPutFast<float>(0x8CD800, fDistance);            // CRenderer::ms_lodDistScale
     m_pInterface->fDrawDistance = fDistance;
 }
 
@@ -254,19 +217,19 @@ unsigned int CSettingsSA::GetFXQuality()
 
 void CSettingsSA::SetFXQuality(unsigned int fxQualityId)
 {
-    MemPutFast<BYTE>(VAR_ucFxQuality, fxQualityId);
+    MemPutFast(VAR_ucFxQuality, static_cast<BYTE>(fxQualityId));
 }
 
 float CSettingsSA::GetMouseSensitivity()
 {
-    float fRawValue = *(FLOAT*)VAR_fMouseSensitivity;
+    float fRawValue = *(float*)VAR_fMouseSensitivity;
     return UnlerpClamped(MOUSE_SENSITIVITY_MIN, fRawValue, MOUSE_SENSITIVITY_MAX);            // Remap to 0-1
 }
 
 void CSettingsSA::SetMouseSensitivity(float fSensitivity)
 {
     float fRawValue = Lerp(MOUSE_SENSITIVITY_MIN, fSensitivity, MOUSE_SENSITIVITY_MAX);
-    MemPutFast<FLOAT>(VAR_fMouseSensitivity, fRawValue);
+    MemPutFast<float>(VAR_fMouseSensitivity, fRawValue);
 }
 
 unsigned int CSettingsSA::GetAntiAliasing()
@@ -280,7 +243,7 @@ void CSettingsSA::SetAntiAliasing(unsigned int uiAntiAliasing, bool bOnRestart)
     if (!bOnRestart)
     {
         DWORD dwFunc = FUNC_SetAntiAliasing;
-        _asm
+        __asm
         {
             push    uiAntiAliasing
             call    dwFunc
@@ -304,7 +267,7 @@ void CSettingsSA::SetMipMappingEnabled(bool bEnable)
 
 void CSettingsSA::Save()
 {
-    _asm
+    __asm
     {
         mov ecx, CLASS_CMenuManager
         mov eax, FUNC_CMenuManager_Save
@@ -312,7 +275,7 @@ void CSettingsSA::Save()
     }
 }
 
-bool CSettingsSA::IsVolumetricShadowsEnabled()
+bool CSettingsSA::IsVolumetricShadowsEnabled() const noexcept
 {
     return m_bVolumetricShadowsEnabled && !m_bVolumetricShadowsSuspended;
 }
@@ -320,12 +283,54 @@ bool CSettingsSA::IsVolumetricShadowsEnabled()
 void CSettingsSA::SetVolumetricShadowsEnabled(bool bEnable)
 {
     m_bVolumetricShadowsEnabled = bEnable;
+
+    // Disable rendering ped real time shadows when they sit on bikes
+    // if vehicle volumetric shadows are disabled because it looks a bit weird
+    MemPut<BYTE>(0x5E682A + 1, bEnable);
+}
+
+
+bool CSettingsSA::GetVolumetricShadowsEnabledByVideoSetting() const noexcept
+{
+    bool volumetricShadow;
+    g_pCore->GetCVars()->Get("volumetric_shadows", volumetricShadow);
+    return volumetricShadow;
+}
+
+bool CSettingsSA::ResetVolumetricShadows() noexcept
+{
+    pGame->GetSettings()->SetVolumetricShadowsEnabled(pGame->GetSettings()->GetVolumetricShadowsEnabledByVideoSetting());
+    return true;
 }
 
 void CSettingsSA::SetVolumetricShadowsSuspended(bool bSuspended)
 {
     m_bVolumetricShadowsSuspended = bSuspended;
 }
+
+bool CSettingsSA::IsDynamicPedShadowsEnabled()
+{
+    return m_bDynamicPedShadowsEnabled;
+}
+
+void CSettingsSA::SetDynamicPedShadowsEnabled(bool bEnable)
+{
+    m_bDynamicPedShadowsEnabled = bEnable;
+}
+
+bool CSettingsSA::IsDynamicPedShadowsEnabledByVideoSetting() const noexcept
+{
+    bool pedDynamicShadows;
+    g_pCore->GetCVars()->Get("dynamic_ped_shadows", pedDynamicShadows);
+    return pedDynamicShadows;
+}
+
+bool CSettingsSA::ResetDynamicPedShadows() noexcept
+{
+    pGame->GetSettings()->SetDynamicPedShadowsEnabled(pGame->GetSettings()->IsDynamicPedShadowsEnabledByVideoSetting());
+    return true;
+}
+
 
 //
 // Volumetric shadow hooks
@@ -358,15 +363,16 @@ __declspec(noinline) void _cdecl MaybeAlterFxQualityValue(DWORD dwAddrCalledFrom
         // Handle all calls from CPed::PreRenderAfterTest
         if (dwAddrCalledFrom > 0x5E65A0 && dwAddrCalledFrom < 0x5E7680)
     {
-        // Always use blob shadows for peds as realtime shadows are disabled in MTA (context switching issues)
-        dwFxQualityValue = 0;
+        dwFxQualityValue = pGame->GetSettings()->IsDynamicPedShadowsEnabled() ? 2 : 0;
     }
 }
 
 // Hooked from 0x49EA50
-void _declspec(naked) HOOK_GetFxQuality()
+static void __declspec(naked) HOOK_GetFxQuality()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         mov     eax, [ecx+054h]            // Current FxQuality setting
@@ -384,9 +390,11 @@ void _declspec(naked) HOOK_GetFxQuality()
 }
 
 // Hook to discover what vehicle will be calling GetFxQuality
-void _declspec(naked) HOOK_StoreShadowForVehicle()
+static void __declspec(naked) HOOK_StoreShadowForVehicle()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         // Hooked from 0x70BDA0  5 bytes
         mov     eax, [esp+4]            // Get vehicle
@@ -523,36 +531,73 @@ void CSettingsSA::ResetFieldOfViewFromScript()
     UpdateFieldOfViewFromSettings();
 }
 
-void CSettingsSA::SetFieldOfViewPlayer(float fAngle, bool bFromScript)
+static std::pair<CCam*, unsigned int> GetActiveCamPlusMode()
+{
+    CCam* cam = pGame->GetCamera()->GetCam(pGame->GetCamera()->GetActiveCam());
+
+    if (cam == nullptr)
+        return std::make_pair(cam, MODE_NONE);
+
+    return std::make_pair(cam, cam->GetMode());
+}
+
+void CSettingsSA::SetFieldOfViewPlayer(float fAngle, bool bFromScript, bool instant)
 {
     if (!bFromScript && ms_bFOVPlayerFromScript)
         return;
+
     ms_bFOVPlayerFromScript = bFromScript;
     ms_fFOV = fAngle;
+
+    // CCam::Process_FollowPed_SA
     MemPut<void*>(0x0522F3A, &ms_fFOV);
     MemPut<void*>(0x0522F5D, &ms_fFOV);
     MemPut<float>(0x0522F7A, ms_fFOV);
+
+    if (instant)
+    {
+        const auto pair = GetActiveCamPlusMode();
+
+        if (pair.second == MODE_FOLLOWPED)
+            pair.first->SetFOV(fAngle);
+    }
 }
 
-void CSettingsSA::SetFieldOfViewVehicle(float fAngle, bool bFromScript)
+void CSettingsSA::SetFieldOfViewVehicle(float fAngle, bool bFromScript, bool instant)
 {
     if (!bFromScript && ms_bFOVVehicleFromScript)
         return;
+
     ms_bFOVVehicleFromScript = bFromScript;
     ms_fFOVCar = fAngle;
+
+    // CCam::Process_FollowCar_SA
     MemPut<void*>(0x0524B76, &ms_fFOVCar);
     MemPut<void*>(0x0524B9A, &ms_fFOVCar);
     MemPut<void*>(0x0524BA2, &ms_fFOVCar);
     MemPut<void*>(0x0524BD3, &ms_fFOVCar);
     MemPut<float>(0x0524BE4, ms_fFOVCar);
+
+    if (instant)
+    {
+        const auto pair = GetActiveCamPlusMode();
+
+        if (pair.second == MODE_BEHINDCAR || pair.second == MODE_CAM_ON_A_STRING || pair.second == MODE_BEHINDBOAT)
+            pair.first->SetFOV(fAngle);
+    }
 }
 
-void CSettingsSA::SetFieldOfViewVehicleMax(float fAngle, bool bFromScript)
+void CSettingsSA::SetFieldOfViewVehicleMax(float fAngle, bool bFromScript, bool instant)
 {
+    (void)instant;
+
     if (!bFromScript && ms_bFOVVehicleFromScript)
         return;
+
     ms_bFOVVehicleFromScript = bFromScript;
     ms_fFOVCarMax = fAngle;
+
+    // CCam::Process_FollowCar_SA
     MemPut<void*>(0x0524BB4, &ms_fFOVCarMax);
     MemPut<float>(0x0524BC5, ms_fFOVCarMax);
 }
@@ -562,74 +607,35 @@ void CSettingsSA::SetFieldOfViewVehicleMax(float fAngle, bool bFromScript)
 // Vehicles LOD draw distance
 //
 ////////////////////////////////////////////////
-float ms_fClientMaxVehicleLODDistance = DEFAULT_VEHICLE_LOD_DISTANCE;
-float ms_fClientMaxTrainPlaneLODDistance = DEFAULT_VEHICLE_LOD_DISTANCE * TRAIN_LOD_DISTANCE_MULTIPLIER;
-float ms_fScriptMaxVehicleLODDistance = ms_fClientMaxVehicleLODDistance;
-float ms_fScriptMaxTrainPlaneLODDistance = ms_fClientMaxTrainPlaneLODDistance;
-bool  ms_bMaxVehicleLODDistanceFromScript = false;
+bool ms_bMaxVehicleLODDistanceFromScript = false;
 
 void CSettingsSA::SetVehiclesLODDistance(float fVehiclesLODDistance, float fTrainsPlanesLODDistance, bool bFromScript)
 {
-    if (bFromScript)
+    ms_fVehicleLODDistance = fVehiclesLODDistance;
+    ms_fTrainPlaneLODDistance = fTrainsPlanesLODDistance;
+    ms_bMaxVehicleLODDistanceFromScript = bFromScript;
+}
+
+void CSettingsSA::ResetVehiclesLODDistance(bool bForceDefault)
+{
+    if (ms_bMaxVehicleLODDistanceFromScript && !bForceDefault)
+        return;
+
+    bool bHighDetailVehicles;
+    g_pCore->GetCVars()->Get("high_detail_vehicles", bHighDetailVehicles);
+
+    if (bHighDetailVehicles)
     {
-        ms_fScriptMaxVehicleLODDistance = fVehiclesLODDistance;
-        ms_fScriptMaxTrainPlaneLODDistance = fTrainsPlanesLODDistance;
-        ms_bMaxVehicleLODDistanceFromScript = bFromScript;
+        ms_fVehicleLODDistance = MAX_VEHICLE_LOD_DISTANCE;
+        ms_fTrainPlaneLODDistance = MAX_VEHICLE_LOD_DISTANCE;
     }
     else
     {
-        ms_fClientMaxVehicleLODDistance = fVehiclesLODDistance;
-        ms_fClientMaxTrainPlaneLODDistance = fTrainsPlanesLODDistance;
-    }
-
-    if (ms_bMaxVehicleLODDistanceFromScript)
-    {
-        ms_fVehicleLODDistance = Min(ms_fClientMaxVehicleLODDistance, ms_fScriptMaxVehicleLODDistance);
-        ms_fTrainPlaneLODDistance = Min(ms_fClientMaxTrainPlaneLODDistance, ms_fScriptMaxTrainPlaneLODDistance);
-    }
-    else
-    {
-        ms_fVehicleLODDistance = Min(fVehiclesLODDistance, ms_fClientMaxVehicleLODDistance);
-        ms_fTrainPlaneLODDistance = Min(fTrainsPlanesLODDistance, ms_fClientMaxTrainPlaneLODDistance);
-    }
-}
-
-void CSettingsSA::ResetVehiclesLODDistance(bool bFromScript)
-{
-    if (!bFromScript)
-    {
-        bool bHighDetailVehicles;
-        g_pCore->GetCVars()->Get("high_detail_vehicles", bHighDetailVehicles);
-
-        if (bHighDetailVehicles)
-        {
-            ms_fClientMaxVehicleLODDistance = MAX_VEHICLE_LOD_DISTANCE;
-            ms_fClientMaxTrainPlaneLODDistance = MAX_VEHICLE_LOD_DISTANCE;
-        }
-        else
-        {
-            ms_fClientMaxVehicleLODDistance = DEFAULT_VEHICLE_LOD_DISTANCE;
-            ms_fClientMaxTrainPlaneLODDistance = DEFAULT_VEHICLE_LOD_DISTANCE * TRAIN_LOD_DISTANCE_MULTIPLIER;
-        }
-
-        // Script still wants to override client setting, let's make sure we use latest max
-        if (ms_bMaxVehicleLODDistanceFromScript)
-        {
-            ms_fVehicleLODDistance = Min(ms_fClientMaxVehicleLODDistance, ms_fScriptMaxVehicleLODDistance);
-            ms_fTrainPlaneLODDistance = Min(ms_fClientMaxTrainPlaneLODDistance, ms_fScriptMaxTrainPlaneLODDistance);
-            return;
-        }
+        ms_fVehicleLODDistance = DEFAULT_VEHICLE_LOD_DISTANCE;
+        ms_fTrainPlaneLODDistance = DEFAULT_VEHICLE_LOD_DISTANCE * TRAIN_LOD_DISTANCE_MULTIPLIER;
     }
 
     ms_bMaxVehicleLODDistanceFromScript = false;
-    ms_fVehicleLODDistance = ms_fClientMaxVehicleLODDistance;
-    ms_fTrainPlaneLODDistance = ms_fClientMaxTrainPlaneLODDistance;
-}
-
-void CSettingsSA::ResetVehiclesLODDistanceFromScript()
-{
-    ms_bMaxVehicleLODDistanceFromScript = false;
-    ResetVehiclesLODDistance(false);
 }
 
 void CSettingsSA::GetVehiclesLODDistance(float& fVehiclesLODDistance, float& fTrainsPlanesLODDistance)
@@ -643,59 +649,77 @@ void CSettingsSA::GetVehiclesLODDistance(float& fVehiclesLODDistance, float& fTr
 // Peds LOD draw distance
 //
 ////////////////////////////////////////////////
-float ms_fClientMaxPedsLODDistance = DEFAULT_PEDS_LOD_DISTANCE;
-float ms_fScriptMaxPedsLODDistance = ms_fClientMaxPedsLODDistance;
-bool  ms_bMaxPedsLODDistanceFromScript = false;
+bool ms_bMaxPedsLODDistanceFromScript = false;
 
 void CSettingsSA::SetPedsLODDistance(float fPedsLODDistance, bool bFromScript)
 {
-    if (bFromScript)
-    {
-        ms_fScriptMaxPedsLODDistance = fPedsLODDistance;
-        ms_bMaxPedsLODDistanceFromScript = bFromScript;
-    }
-    else
-        ms_fClientMaxPedsLODDistance = fPedsLODDistance;
-
-    if (ms_bMaxPedsLODDistanceFromScript)
-        ms_fPedsLODDistance = Min(ms_fClientMaxPedsLODDistance, ms_fScriptMaxPedsLODDistance);
-    else
-        ms_fPedsLODDistance = Min(fPedsLODDistance, ms_fClientMaxPedsLODDistance);
+    ms_fPedsLODDistance = fPedsLODDistance;
+    ms_bMaxPedsLODDistanceFromScript = bFromScript;
 }
 
-void CSettingsSA::ResetPedsLODDistance(bool bFromScript)
+void CSettingsSA::ResetPedsLODDistance(bool bForceDefault)
 {
-    if (!bFromScript)
-    {
-        bool bHighDetailPeds;
-        g_pCore->GetCVars()->Get("high_detail_peds", bHighDetailPeds);
+    if (ms_bMaxPedsLODDistanceFromScript && !bForceDefault)
+        return;
 
-        if (bHighDetailPeds)
-            ms_fClientMaxPedsLODDistance = MAX_PEDS_LOD_DISTANCE;
-        else
-            ms_fClientMaxPedsLODDistance = DEFAULT_PEDS_LOD_DISTANCE;
+    bool bHighDetailPeds;
+    g_pCore->GetCVars()->Get("high_detail_peds", bHighDetailPeds);
 
-        // Script still wants to override client setting, let's make sure we use latest max
-        if (ms_bMaxPedsLODDistanceFromScript)
-        {
-            ms_fPedsLODDistance = Min(ms_fClientMaxPedsLODDistance, ms_fScriptMaxPedsLODDistance);
-            return;
-        }
-    }
+    if (bHighDetailPeds)
+        ms_fPedsLODDistance = MAX_PEDS_LOD_DISTANCE;
+    else
+        ms_fPedsLODDistance = DEFAULT_PEDS_LOD_DISTANCE;
 
     ms_bMaxPedsLODDistanceFromScript = false;
-    ms_fPedsLODDistance = ms_fClientMaxPedsLODDistance;
-}
-
-void CSettingsSA::ResetPedsLODDistanceFromScript()
-{
-    ms_bMaxPedsLODDistanceFromScript = false;
-    ResetPedsLODDistance(false);
 }
 
 float CSettingsSA::GetPedsLODDistance()
 {
     return ms_fPedsLODDistance;
+}
+
+////////////////////////////////////////////////
+//
+// Blur
+//
+// When blur is controlled by script changing this option
+// in settings doesn't produce any effect
+//
+////////////////////////////////////////////////
+void CSettingsSA::ResetBlurEnabled()
+{
+    if (m_bBlurViaScript)
+        return;
+
+    bool bEnabled;
+    g_pCore->GetCVars()->Get("blur", bEnabled);
+    pGame->SetBlurLevel(bEnabled ? DEFAULT_BLUR_LEVEL : 0);
+}
+
+void CSettingsSA::SetBlurControlledByScript(bool bByScript)
+{
+    m_bBlurViaScript = bByScript;
+}
+
+// Corona rain reflections
+//
+// When corona reflections are controlled by script changing this option
+// in settings doesn't produce any effect
+//
+////////////////////////////////////////////////
+void CSettingsSA::ResetCoronaReflectionsEnabled()
+{
+    if (m_bCoronaReflectionsViaScript)
+        return;
+
+    bool bEnabled;
+    g_pCore->GetCVars()->Get("corona_reflections", bEnabled);
+    g_pCore->GetGame()->GetCoronas()->SetCoronaReflectionsEnabled(bEnabled ? 1 : 0);
+}
+
+void CSettingsSA::SetCoronaReflectionsControlledByScript(bool bViaScript)
+{
+    m_bCoronaReflectionsViaScript = bViaScript;
 }
 
 ////////////////////////////////////////////////
@@ -949,9 +973,11 @@ __declspec(noinline) int OnMY_SelectDevice()
 DWORD RETURN_SelectDeviceSingle = 0x0746273;
 DWORD RETURN_SelectDeviceMultiHide = 0x074622C;
 DWORD RETURN_SelectDeviceMultiShow = 0x0746227;
-void _declspec(naked) HOOK_SelectDevice()
+static void __declspec(naked) HOOK_SelectDevice()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         call    OnMY_SelectDevice
@@ -961,14 +987,14 @@ void _declspec(naked) HOOK_SelectDevice()
         jl      single
         jz      multishow
 
-                // multhide
+        // multhide
         mov     eax, 1
         jmp     RETURN_SelectDeviceMultiHide
 
-multishow:
+        multishow:
         jmp     RETURN_SelectDeviceMultiShow
 
-single:
+        single:
         jmp     RETURN_SelectDeviceSingle
     }
 }

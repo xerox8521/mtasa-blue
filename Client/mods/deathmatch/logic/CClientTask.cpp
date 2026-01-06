@@ -9,6 +9,12 @@
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <game/CTaskManager.h>
+#include <game/CTasks.h>
+#include <game/TaskBasic.h>
+#include <game/TaskGoTo.h>
+#include <game/TaskJumpFall.h>
+#include <game/TaskPhysicalResponse.h>
 
 using std::list;
 
@@ -611,7 +617,7 @@ CTask* CClientTask::CreateTask(bool& bTaskPrimary, int& iTaskPriority)
         iTaskPriority = TASK_PRIORITY_PRIMARY;
 
         // Create the task
-        return g_pGame->GetTasks()->CreateTaskSimpleClimb(NULL, vecTarget, fHeading, static_cast<unsigned char>(fSurfaceType), static_cast<char>(fClimbStage),
+        return g_pGame->GetTasks()->CreateTaskSimpleClimb(NULL, vecTarget, fHeading, static_cast<unsigned char>(fSurfaceType), static_cast<eClimbHeights>(fClimbStage),
                                                           bForceClimb);
     }
 

@@ -5,7 +5,7 @@
  *  FILE:        xml/CXMLNodeImpl.cpp
  *  PURPOSE:     XML node class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -14,7 +14,10 @@
 using std::list;
 
 CXMLNodeImpl::CXMLNodeImpl(CXMLFileImpl* pFile, CXMLNodeImpl* pParent, TiXmlElement& Node)
-    : m_ulID(INVALID_XML_ID), m_bUsingIDs((!pFile) || pFile && pFile->IsUsingIDs()), m_pNode(&Node), m_Attributes(Node, (!pFile) || pFile && pFile->IsUsingIDs())
+    : m_ulID(INVALID_XML_ID),
+      m_bUsingIDs((!pFile) || pFile && pFile->IsUsingIDs()),
+      m_pNode(&Node),
+      m_Attributes(Node, (!pFile) || pFile && pFile->IsUsingIDs())
 {
     // Init
     m_pFile = pFile;
@@ -76,7 +79,7 @@ CXMLNodeImpl::~CXMLNodeImpl()
 
 void CXMLNodeImpl::BuildFromDocument()
 {
-    TiXmlNode*    xmlChild = nullptr;
+    TiXmlNode* xmlChild = nullptr;
     while (xmlChild = m_pNode->IterateChildren(xmlChild))
     {
         auto xmlChildElement = xmlChild->ToElement();
@@ -325,7 +328,7 @@ void CXMLNodeImpl::SetTagContent(float fContent)
 {
     // Convert to string and set it
     char szBuffer[40];
-    sprintf(szBuffer, "%f", fContent);
+    snprintf(szBuffer, sizeof(szBuffer), "%f", fContent);
     SetTagContent(szBuffer);
 }
 

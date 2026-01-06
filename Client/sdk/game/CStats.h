@@ -5,7 +5,7 @@
  *  FILE:        sdk/game/CStats.h
  *  PURPOSE:     Game statistics interface
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -543,15 +543,11 @@ enum
 #define MAX_INT_STATS (MAX_INT_FLOAT_STATS - STATS_OFFSET)
 #define MAX_STATS (MAX_INT_STATS + MAX_FLOAT_STATS)
 
-enum eWeaponType;
-
 class CStats
 {
 public:
     virtual float GetStatValue(unsigned short usIndex) = 0;
     virtual void  ModifyStat(unsigned short usIndex, float fAmmount) = 0;
-    virtual void  IncrementStat(unsigned short usIndex, float fAmmount) = 0;
-    virtual void  DecrementStat(unsigned short usIndex, float fAmmount) = 0;
     virtual void  SetStatValue(unsigned short usIndex, float fAmmount) = 0;
 
     virtual unsigned short GetSkillStatIndex(eWeaponType type) = 0;

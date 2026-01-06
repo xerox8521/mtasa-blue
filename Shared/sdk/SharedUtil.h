@@ -5,7 +5,7 @@
  *  FILE:        SharedUtil.h
  *  PURPOSE:     Solution wide utility functions
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 #pragma once
@@ -54,6 +54,7 @@
 #include "SharedUtil.Math.h"
 #include "SharedUtil.ClassIdent.h"
 #include "SharedUtil.Hash.h"
+#include "SharedUtil.Crypto.h"
 #if defined(SHARED_UTIL_WITH_SYS_INFO)
     #include "SharedUtil.SysInfo.h"
 #endif

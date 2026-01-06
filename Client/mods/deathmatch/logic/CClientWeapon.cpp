@@ -9,6 +9,12 @@
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <game/CPointLights.h>
+#include <game/CWeaponStat.h>
+#include <game/CWeapon.h>
+#include <game/CColPoint.h>
+#include <game/CFx.h>
+#include <game/CWorld.h>
 
 CClientWeapon::CClientWeapon(CClientManager* pManager, ElementID ID, eWeaponType type)
     : ClassInit(this), CClientObject(pManager, ID, CClientPickupManager::GetWeaponModel(type), false)
@@ -387,7 +393,7 @@ void CClientWeapon::FireInstantHit(CVector vecOrigin, CVector vecTarget, bool bS
             }
         }
         // if ( pAttachedTo ) pAttachedTo->WorldIgnore ( true );
-        if (m_pWeapon->ProcessLineOfSight(&vecOrigin, &vecTarget, &pColPoint, &pColEntity, m_weaponConfig.flags, &pBuildingResult, m_Type, &pEntity))
+        if (m_pWeapon->ProcessLineOfSight(vecOrigin, vecTarget, &pColPoint, pColEntity, m_weaponConfig.flags, &pBuildingResult, m_Type, &pEntity))
         {
             vecTarget = pColPoint->GetPosition();
         }
@@ -443,7 +449,7 @@ void CClientWeapon::FireInstantHit(CVector vecOrigin, CVector vecTarget, bool bS
 #ifdef MARKER_DEBUG
         m_pMarker2->SetPosition(vecTarget);
 #endif
-        m_pWeapon->DoBulletImpact(m_pObject, pEntity, &vecOrigin, &vecTarget, pColPoint, 0);
+        m_pWeapon->DoBulletImpact(m_pObject, pEntity, vecOrigin, vecTarget, *pColPoint->GetInterface(), 0);
 
         if (!IsLocalEntity() && m_pOwner)
         {
@@ -674,7 +680,7 @@ void CClientWeapon::DoGunShells(CVector vecOrigin, CVector vecDirection)
             // Note: Nozzle flare lags behind attached object if it is moving, but we can't set attached entity here as it will crash if not a ped
             g_pGame->GetFx()->TriggerGunshot(NULL, vecOrigin, vecDirection, true);
 
-            m_pWeapon->AddGunshell(m_pObject, &vecOrigin, &CVector2D(0, -1), fShellSize);
+            m_pWeapon->AddGunshell(m_pObject, vecOrigin, CVector2D(0, -1), fShellSize);
         }
         if (m_Type != WEAPONTYPE_MINIGUN)
         {

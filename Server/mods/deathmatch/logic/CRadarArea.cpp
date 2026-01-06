@@ -5,11 +5,18 @@
  *  FILE:        mods/deathmatch/logic/CRadarArea.cpp
  *  PURPOSE:     Radar area entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CRadarArea.h"
+#include "CRadarAreaManager.h"
+#include "CResource.h"
+#include "CLogger.h"
+#include "Utils.h"
+#include "packets/CElementRPCPacket.h"
+#include <net/rpc_enums.h>
 
 CRadarArea::CRadarArea(CRadarAreaManager* pRadarAreaManager, CElement* pParent) : CPerPlayerEntity(pParent)
 {

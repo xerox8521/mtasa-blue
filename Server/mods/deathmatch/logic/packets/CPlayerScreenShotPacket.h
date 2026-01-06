@@ -5,10 +5,15 @@
  *  FILE:        mods/deathmatch/logic/packets/CPlayerScreenShotPacket.h
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
 #pragma once
+
+#include "CPacket.h"
+
+class CResource;
 
 class CPlayerScreenShotPacket final : public CPacket
 {

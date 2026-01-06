@@ -3,12 +3,15 @@
  *  PROJECT:     Multi Theft Auto v1.0
  *  LICENSE:     See LICENSE in the top level directory
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
 #include "SimHeaders.h"
+#include "Utils.h"
+#include "CWeaponNames.h"
+#include "CVehicleManager.h"
 
 CSimKeysyncPacket::CSimKeysyncPacket(ElementID PlayerID, bool bPlayerHasOccupiedVehicle, ushort usVehicleGotModel, uchar ucPlayerGotWeaponType,
                                      float fPlayerGotWeaponRange, bool bVehicleHasHydraulics, bool bVehicleIsPlaneOrHeli,
@@ -71,13 +74,13 @@ bool CSimKeysyncPacket::Read(NetBitStreamInterface& BitStream)
             SWeaponSlotSync slot;
             if (!BitStream.Read(&slot))
                 return false;
-            unsigned int uiSlot = slot.data.uiSlot;
+            auto ucSlot = static_cast<unsigned char>(slot.data.uiSlot);
 
             if (bWeaponCorrect)
-                m_Cache.ucWeaponSlot = uiSlot;
+                m_Cache.ucWeaponSlot = ucSlot;
 
             // Did he have a weapon?
-            if (CWeaponNames::DoesSlotHaveAmmo(uiSlot))
+            if (CWeaponNames::DoesSlotHaveAmmo(ucSlot))
             {
                 // And ammo in clip
                 SWeaponAmmoSync ammo(ucUseWeaponType, false, true);

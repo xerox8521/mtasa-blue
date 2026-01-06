@@ -5,7 +5,7 @@
  *  FILE:        core/CMessageLoopHook.cpp
  *  PURPOSE:     Windows message loop hooking
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -124,15 +124,32 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
     // Alternate alt-tab system
     if (pThis && hwnd == pThis->GetHookedWindowHandle())
     {
-        if (uMsg == WM_ACTIVATE && LOWORD(wParam) == WA_ACTIVE)
+        if (uMsg == WM_ACTIVATE)
         {
-            GetVideoModeManager()->OnGainFocus();
+            CModManager* pModManager = CModManager::GetSingletonPtr();
+            WORD         wState = LOWORD(wParam);
+
+            if (pModManager && pModManager->IsLoaded())
+            {
+                bool bFocus = (wState == WA_CLICKACTIVE) || (wState == WA_ACTIVE);
+                pModManager->GetClient()->OnWindowFocusChange(bFocus);
+            }
+
+            switch (wState)
+            {
+                case WA_ACTIVE:
+                    GetVideoModeManager()->OnGainFocus();
+                    break;
+
+                case WA_INACTIVE:
+                {
+                    GetVideoModeManager()->OnLoseFocus();
+                    g_pCore->GetKeyBinds()->OnLoseFocus();
+                    break;
+                }
+            }
         }
-        if (uMsg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE)
-        {
-            GetVideoModeManager()->OnLoseFocus();
-            g_pCore->GetKeyBinds()->OnLoseFocus();
-        }
+
         if (uMsg == WM_PAINT)
         {
             GetVideoModeManager()->OnPaint();
@@ -163,6 +180,13 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
             return 0;
     }
 
+    // Disable the system context menu by clicking on window bar (freezes the game).
+    // Disable right mouse button outside application window area (holding it over window bar freezes the game).
+    if (uMsg == WM_CONTEXTMENU || uMsg == WM_NCRBUTTONDOWN)
+    {
+        return 0;
+    }
+
     // Quit message?
     if (uMsg == WM_CLOSE)
     {
@@ -176,8 +200,7 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
         if (pCDS->dwData == URI_CONNECT)
         {
             // We can receive this message before we are ready to process it (e.g. trying to show a CEGUI message window before CEGUI is initialized).
-            // Ignore these messages until we are in the main menu (when CCore sets m_bFirstFrame to false)
-            if (!g_pCore->IsFirstFrame())
+            if (g_pCore->IsNetworkReady())
             {
                 LPSTR szConnectInfo = (LPSTR)pCDS->lpData;
                 CCommandFuncs::Connect(szConnectInfo);
@@ -264,6 +287,11 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
                         {
                             ms_bIgnoreNextEscapeCharacter = true;
                             pConsole->SetVisible(false);
+
+                            CGUI* pGUI = g_pCore->GetGUI();
+                            if (!g_pCore->IsMenuVisible())
+                                pGUI->SetCursorAlpha(pGUI->GetCurrentServerCursorAlpha());
+
                             return true;
                         }
 
@@ -293,8 +321,8 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
                     // If CTRL and Tab are pressed, Trigger a skip
                     if ((uMsg == WM_KEYDOWN && wParam == VK_TAB))
                     {
-                        eSystemState systemState = g_pCore->GetGame()->GetSystemState();
-                        if (systemState == 7 || systemState == 8 || systemState == 9)
+                        SystemState systemState = g_pCore->GetGame()->GetSystemState();
+                        if (systemState == SystemState::GS_FRONTEND || systemState == SystemState::GS_INIT_PLAYING_GAME || systemState == SystemState::GS_PLAYING_GAME)
                         {
                             short sCtrlState = GetKeyState(VK_CONTROL);
                             short sShiftState = GetKeyState(VK_SHIFT);
@@ -316,8 +344,8 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
                     }
                     if ((uMsg == WM_KEYDOWN && (wParam >= VK_1 && wParam <= VK_9)))
                     {
-                        eSystemState systemState = g_pCore->GetGame()->GetSystemState();
-                        if (systemState == 7 || systemState == 8 || systemState == 9)
+                        SystemState systemState = g_pCore->GetGame()->GetSystemState();
+                        if (systemState == SystemState::GS_FRONTEND || systemState == SystemState::GS_INIT_PLAYING_GAME || systemState == SystemState::GS_PLAYING_GAME)
                         {
                             short sCtrlState = GetKeyState(VK_CONTROL);
                             if (sCtrlState & 0x8000)
@@ -340,9 +368,9 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
                     // If F8 is pressed, we show/hide the console
                     if ((uMsg == WM_KEYDOWN && wParam == VK_F8) || (uMsg == WM_CHAR && wParam == '`'))
                     {
-                        eSystemState systemState = g_pCore->GetGame()->GetSystemState();
-                        if (CLocalGUI::GetSingleton().IsConsoleVisible() || systemState == 7 || systemState == 8 ||
-                            systemState == 9) /* GS_FRONTEND, GS_INIT_PLAYING_GAME, GS_PLAYING_GAME */
+                        SystemState systemState = g_pCore->GetGame()->GetSystemState();
+                        if (CLocalGUI::GetSingleton().IsConsoleVisible() || systemState == SystemState::GS_FRONTEND || systemState == SystemState::GS_INIT_PLAYING_GAME ||
+                            systemState == SystemState::GS_PLAYING_GAME)
                         {
                             CLocalGUI::GetSingleton().SetConsoleVisible(!CLocalGUI::GetSingleton().IsConsoleVisible());
                         }
@@ -427,7 +455,7 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
             }
 
             // Lead the message through the keybinds message processor
-            if (!g_pCore->IsFirstFrame())
+            if (g_pCore->CanHandleKeyMessages())
             {
                 g_pCore->GetKeyBinds()->ProcessMessage(hwnd, uMsg, wParam, lParam);
             }
@@ -490,6 +518,13 @@ LRESULT CALLBACK CMessageLoopHook::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM w
                     return true;
                 }
 
+                // Process ALT + F4
+                if (uMsg == WM_SYSKEYDOWN && wParam == VK_F4)
+                {
+                    // Tell windows to handle this message.
+                    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+                }
+
                 // If we handled mouse steering, don't let GTA.
                 // if ( !CCore::GetSingleton ().GetMouseControl()->ProcessMouseMove ( uMsg, wParam, lParam ) )
                 // Call GTA's window procedure.
@@ -524,7 +559,7 @@ void CMessageLoopHook::StartWindowMovement()
 
     LONG lExStyle = GetWindowLong(m_MovementDummyWindow, GWL_EXSTYLE);
     lExStyle &= ~(WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
-    lExStyle |= WS_EX_LAYERED;
+    lExStyle |= WS_EX_LAYERED | WS_EX_TOOLWINDOW;
     SetWindowLong(m_MovementDummyWindow, GWL_EXSTYLE, lExStyle);
     SetLayeredWindowAttributes(m_MovementDummyWindow, 0, 140, LWA_ALPHA);
 

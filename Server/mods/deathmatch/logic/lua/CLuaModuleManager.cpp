@@ -5,13 +5,14 @@
  *  FILE:        mods/deathmatch/logic/lua/CLuaModuleManager.cpp
  *  PURPOSE:     Lua module extension manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 /** This class handles all communication from and to the lua addon-modules **/
 
 #include "StdInc.h"
+#include "CLuaModuleManager.h"
 
 extern CGame* g_pGame;
 

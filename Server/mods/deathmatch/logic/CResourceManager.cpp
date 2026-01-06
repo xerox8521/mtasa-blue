@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CResourceManager.cpp
  *  PURPOSE:     Resource manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -13,6 +13,16 @@
 // new resources on demand
 
 #include "StdInc.h"
+#include "CResourceManager.h"
+#include "CLogger.h"
+#include "CGame.h"
+#include "CMapManager.h"
+#include "CIdArray.h"
+#include "Utils.h"
+#include "CMainConfig.h"
+#include "CDatabaseManager.h"
+#include "CRegistry.h"
+
 #define BLOCKED_DB_FILE_NAME    "fileblock.db"
 #define BLOCKED_DB_TABLE_NAME   "`block_reasons`"
 
@@ -162,19 +172,42 @@ bool CResourceManager::Refresh(bool bRefreshAll, const SString strJustThisResour
         if (!strJustThisResource.empty() && strJustThisResource != info.strName)
             continue;
 
-        if (!info.bPathIssue)
+        if (info.bPathIssue)
+            continue;
+
+        auto* pResource = GetResource(info.strName);
+
+        if (bRefreshAll || !pResource || !pResource->CheckIfStartable())
         {
-            CResource* pResource = GetResource(info.strName);
+            if (g_pServerInterface->IsRequestingExit())
+                return false;
 
-            if (bRefreshAll || !pResource || !pResource->CheckIfStartable())
-            {
-                if (g_pServerInterface->IsRequestingExit())
-                    return false;
-
-                // Add the resource
-                Load(!info.bIsDir, info.strAbsPath, info.strName);
-            }
+            // Add the resource
+            Load(!info.bIsDir, info.strAbsPath, info.strName);
+            continue;
         }
+
+        if (!pResource)
+            continue;
+
+        // For existing resources, refresh ACL permissions without full reload
+        std::string strPath;
+        if (!pResource->GetFilePath("meta.xml", strPath))
+            continue;
+
+        std::unique_ptr<CXMLFile> pMetaFile(g_pServerInterface->GetXML()->CreateXML(strPath.c_str()));
+        if (!pMetaFile || !pMetaFile->Parse())
+            continue;
+
+        CXMLNode* pRoot = pMetaFile->GetRootNode();
+        if (!pRoot)
+            continue;
+
+        CXMLNode* pNodeAclRequest = pRoot->FindSubNode("aclrequest", 0);
+        if (pNodeAclRequest)
+            pResource->RefreshAutoPermissions(pNodeAclRequest);
+        else
+            pResource->RemoveAutoPermissions();
     }
 
     marker.Set("AddNew");
@@ -260,7 +293,8 @@ void CResourceManager::CheckResources(CResource* pResource)
 
 void CResourceManager::OnResourceLoadStateChange(CResource* pResource, const char* szOldState, const char* szNewState) const
 {
-    if (!pResource) return;
+    if (!pResource)
+        return;
 
     CLuaArguments Arguments;
     Arguments.PushResource(pResource);
@@ -529,6 +563,14 @@ void CResourceManager::OnPlayerJoin(CPlayer& Player)
     for (; iter != CResource::m_StartedResources.end(); iter++)
     {
         (*iter)->OnPlayerJoin(Player);
+    }
+}
+
+void CResourceManager::OnPlayerQuit(CPlayer& Player)
+{
+    for (CResource* resource : CResource::m_StartedResources)
+    {
+        resource->OnPlayerQuit(Player);
     }
 }
 
@@ -829,11 +871,11 @@ void CResourceManager::ProcessQueue()
         }
         else if (sItem.eQueue == QUEUE_REFRESH)
         {
-            Refresh(false, sItem.pResource ? sItem.pResource->GetName() : "");
+            Refresh(false, sItem.pResource ? sItem.pResource->GetName() : SStringX(""));
         }
         else if (sItem.eQueue == QUEUE_REFRESHALL)
         {
-            Refresh(true, sItem.pResource ? sItem.pResource->GetName() : "");
+            Refresh(true, sItem.pResource ? sItem.pResource->GetName() : SStringX(""));
         }
     }
 }

@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/packets/CChatEchoPacket.h
  *  PURPOSE:     Chat message echo packet class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -16,7 +16,7 @@
 class CChatClearPacket final : public CPacket
 {
 public:
-    CChatClearPacket() {};
+    CChatClearPacket(){};
 
     // Chat uses low priority channel to avoid getting queued behind large map downloads #6877
     ePacketID               GetPacketID() const { return PACKET_ID_CHAT_CLEAR; };

@@ -5,7 +5,7 @@
  *  FILE:        core/CCrashHandler.h
  *  PURPOSE:     Crash handler class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -18,6 +18,8 @@
 #else
     #include <signal.h>
 #endif
+
+class CExceptionInformation;
 
 class CCrashHandler
 {

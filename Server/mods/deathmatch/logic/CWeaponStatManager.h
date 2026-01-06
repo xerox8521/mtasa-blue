@@ -10,13 +10,17 @@
 
 #pragma once
 
-#include <list>
 #include "CCommon.h"
+#include <list>
+
 // Straight out of CGameSA.h
 #define     CLASSSIZE_WeaponInfo            112         // ##SA##
 #define     NUM_WeaponInfosStdSkill         WEAPONTYPE_LAST_WEAPONTYPE
 #define     NUM_WeaponInfosOtherSkill       11
 #define     NUM_WeaponInfosTotal            (NUM_WeaponInfosStdSkill + (3*NUM_WeaponInfosOtherSkill)) // std, (poor, pro, special)
+
+class CWeaponStat;
+
 struct sWeaponInfo
 {
     eFireType fire_type;            // type - instant hit (e.g. pistol), projectile (e.g. rocket launcher), area effect (e.g. flame thrower)
@@ -86,7 +90,8 @@ public:
     float        GetWeaponRangeFromSkillLevel(eWeaponType eWeapon, float fSkillLevel);
 
     // Static Methods
-    static unsigned short GetSkillStatIndex(eWeaponType eWeapon);
+    static eStats GetSkillStatIndex(eWeaponType weapon);
+    static bool           HasWeaponBulletSync(uint32_t weaponID) noexcept;
 
 private:
     std::list<CWeaponStat*>                             m_OriginalWeaponData;

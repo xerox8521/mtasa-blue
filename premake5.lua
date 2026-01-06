@@ -4,8 +4,8 @@ require "compose_files"
 require "install_data"
 require "install_resources"
 require "install_cef"
-require "install_discord"
 require "install_unifont"
+require "install_discord"
 
 -- Set CI Build global
 local ci = os.getenv("CI")
@@ -16,12 +16,25 @@ else
 end
 GLIBC_COMPAT = os.getenv("GLIBC_COMPAT") == "true"
 
+newoption {
+	trigger     = "gccprefix",
+	value       = "PREFIX",
+	description = "Prefix to be prepended to commands used by the GCC toolchain (for cross-building)",
+}
+
 workspace "MTASA"
 	configurations {"Debug", "Release", "Nightly"}
 
-	platforms { "x86", "x64"}
 	if os.host() == "macosx" then
-		removeplatforms { "x86" }
+		platforms { "arm64" }
+	elseif os.host() == "windows" then
+		platforms { "x86", "x64", "arm64" }
+	else
+		platforms { "x86", "x64", "arm", "arm64" }
+	end
+
+	if _OPTIONS["gccprefix"] then
+		gccprefix(_OPTIONS["gccprefix"])
 	end
 
 	targetprefix ""
@@ -29,10 +42,11 @@ workspace "MTASA"
 	location "Build"
 	startproject "Client Launcher"
 
-	cppdialect "C++17"
+	cppdialect "C++23"
 	characterset "MBCS"
 	pic "On"
 	symbols "On"
+	flags "MultiProcessorCompile"
 
 	dxdir = os.getenv("DXSDK_DIR") or ""
 	includedirs {
@@ -52,7 +66,7 @@ workspace "MTASA"
 	copy = function(p) return "{COPY} %{cfg.buildtarget.abspath} \"%{wks.location}../Bin/"..p.."/\"" end
 
 	if GLIBC_COMPAT then
-		filter { "system:linux" }
+		filter { "system:linux", "platforms:x86 or x64" }
 			includedirs "/compat"
 			linkoptions "-static-libstdc++ -static-libgcc"
 			forceincludes  { "glibc_version.h" }
@@ -66,10 +80,20 @@ workspace "MTASA"
 		architecture "x86"
 	filter "platforms:x64"
 		architecture "x86_64"
+	filter "platforms:arm"
+		architecture "ARM"
+	filter "platforms:arm64"
+		architecture "ARM64"
 
 	filter "configurations:Debug"
 		defines { "MTA_DEBUG" }
 		targetsuffix "_d"
+
+	filter "configurations:Release"
+		defines { "MTA_RELEASE" }
+
+	filter "configurations:Nightly"
+		defines { "MTA_NIGHTLY" }
 
 	filter "configurations:Release or configurations:Nightly"
 		optimize "Speed"	-- "On"=MS:/Ox GCC:/O2  "Speed"=MS:/O2 GCC:/O3  "Full"=MS:/Ox GCC:/O3
@@ -80,17 +104,24 @@ workspace "MTASA"
 
 		filter { "system:linux" }
 			linkoptions { "-s" }
+	else
+		filter "system:windows"
+			defaultplatform "x86"
 	end
 
+	filter { "system:macosx", "platforms:arm64" }
+		includedirs { "/opt/homebrew/include" }
+		libdirs { "/opt/homebrew/lib" }
+
 	filter {"system:windows", "configurations:Nightly", "kind:not StaticLib"}
-		os.mkdir("Build/Symbols")
-		linkoptions "/PDB:\"Symbols\\$(ProjectName).pdb\""
+		symbolspath "$(SolutionDir)Symbols\\$(Configuration)_$(Platform)\\$(ProjectName).pdb"
 
 	filter "system:windows"
-		toolset "v142"
+		toolset "v145"
+		preferredtoolarchitecture "x86_64"
 		staticruntime "On"
 		defines { "WIN32", "_WIN32", "_WIN32_WINNT=0x601", "_MSC_PLATFORM_TOOLSET=$(PlatformToolsetVersion)" }
-		buildoptions { "/Zc:__cplusplus" }
+		buildoptions { "/Zc:__cplusplus", "/permissive-" }
 		includedirs {
 			path.join(dxdir, "Include")
 		}
@@ -102,9 +133,14 @@ workspace "MTASA"
 		runtime "Release" -- Always use Release runtime
 		defines { "DEBUG" } -- Using DEBUG as _DEBUG is not available with /MT
 
-	filter "system:linux"
-		vectorextensions "SSE2"
+	filter { "system:linux or macosx", "configurations:not Debug" }
 		buildoptions { "-fvisibility=hidden" }
+
+	filter { "system:linux or macosx", "configurations:not Debug", "files:*.cpp" }
+		buildoptions { "-fvisibility-inlines-hidden" }
+
+	filter { "system:linux", "platforms:x86 or x64" }
+		vectorextensions "SSE2"
 
 	-- Only build the client on Windows
 	if os.target() == "windows" then
@@ -118,6 +154,7 @@ workspace "MTASA"
 		include "Client/gui"
 		include "Client/launch"
 		include "Client/loader"
+		include "Client/loader-proxy"
 		include "Client/multiplayer_sa"
 		include "Client/mods/deathmatch"
 
@@ -129,14 +166,16 @@ workspace "MTASA"
 		group "Vendor"
 		include "vendor/portaudio"
 		include "vendor/cef3"
+		include "vendor/discord-rpc"
 		include "vendor/freetype"
-		include "vendor/jpeg-9d"
+		include "vendor/jpeg-9f"
 		include "vendor/ksignals"
 		include "vendor/libpng"
 		include "vendor/tinygettext"
 		include "vendor/pthreads"
 		include "vendor/libspeex"
 		include "vendor/detours"
+		include "vendor/lunasvg"
 	end
 
 	filter {}
@@ -167,3 +206,4 @@ workspace "MTASA"
 		include "vendor/unrar"
 		include "vendor/zip"
 		include "vendor/zlib"
+		include "vendor/glob"

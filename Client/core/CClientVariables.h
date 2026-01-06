@@ -5,7 +5,7 @@
  *  FILE:        core/CClientVariables.h
  *  PURPOSE:     Header file for client variable class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -72,6 +72,12 @@ public:
 
     // Set queries
     void Set(const std::string& strVariable, bool val)
+    {
+        SAN;
+        m_iRevision++;
+        Node(strVariable)->SetTagContent(val);
+    };
+    void Set(const std::string& strVariable, const char* val)
     {
         SAN;
         m_iRevision++;

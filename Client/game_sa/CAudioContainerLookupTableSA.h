@@ -5,16 +5,13 @@
  *  FILE:        game_sa/CAudioContainerLookupTableSA.h
  *  PURPOSE:     Audio container lookup table reader
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
-#include <fstream>
-
-typedef unsigned char  uint8;
-typedef unsigned short uint16;
+#include "CAudioContainerSA.h"
 
 struct SAudioLookupEntrySA;
 
@@ -26,11 +23,9 @@ public:
 
     int                  CountIndex(eAudioLookupIndex index);
     SAudioLookupEntrySA* GetEntry(eAudioLookupIndex lookupIndex, uint8 bankIndex);
-    // SAudioLookupEntrySA* Next       ( bool goToNext );
 
 private:
     std::vector<SAudioLookupEntrySA*> m_Entries[9];
-    // std::vector<SAudioLookupEntrySA*>::iterator   m_CurrentEntry;
 };
 
 struct SAudioLookupEntrySA

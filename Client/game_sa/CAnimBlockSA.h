@@ -5,14 +5,13 @@
  *  FILE:        game_sa/CAnimBlockSA.h
  *  PURPOSE:     Header file for animation block class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
 #include <game/CAnimBlock.h>
-#include "Common.h"
 
 class CAnimBlendAssocGroupSA;
 

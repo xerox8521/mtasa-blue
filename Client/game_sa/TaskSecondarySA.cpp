@@ -5,11 +5,12 @@
  *  FILE:        game_sa/TaskSecondarySA.cpp
  *  PURPOSE:     Secondary game tasks
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "TaskSecondarySA.h"
 
 // ##############################################################################
 // ## Name:    CTaskSimpleDuck
@@ -19,11 +20,11 @@
 CTaskSimpleDuckSA::CTaskSimpleDuckSA(eDuckControlTypes nDuckControl, unsigned short nLengthOfDuck, short nUseShotsWhizzingEvents)
 {
     DWORD dwFunc = FUNC_CTaskSimpleDuck__Constructor;
-    this->CreateTaskInterface(sizeof(CTaskSimpleDuckSAInterface));
+    CreateTaskInterface(sizeof(CTaskSimpleDuckSAInterface));
     if (!IsValid())
         return;
-    DWORD dwThisInterface = (DWORD)this->GetInterface();
-    _asm
+    DWORD dwThisInterface = (DWORD)GetInterface();
+    __asm
     {
         mov     ecx, dwThisInterface
         push    ebx

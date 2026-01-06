@@ -5,11 +5,14 @@
  *  FILE:        mods/deathmatch/logic/luadefs/CLuaRadarAreaDefs.cpp
  *  PURPOSE:     Lua function definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLuaRadarAreaDefs.h"
+#include "CStaticFunctionDefinitions.h"
+#include "CScriptArgReader.h"
 
 void CLuaRadarAreaDefs::LoadFunctions()
 {

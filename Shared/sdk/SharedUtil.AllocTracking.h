@@ -5,7 +5,7 @@
  *  FILE:        SharedUtil.AllocTracking.h
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 #pragma once
@@ -77,7 +77,7 @@ inline void* operator new[](std::size_t size, const std::nothrow_t&) throw()
 {
     return myNew(size);
 }
-inline void operator delete(void* ptr, const std::nothrow_t&)throw()
+inline void operator delete(void* ptr, const std::nothrow_t&) throw()
 {
     myDelete(ptr);
 }
@@ -228,8 +228,8 @@ namespace std
     };
 }            // namespace std
 
-// Replace std classes
-// Not safe - do not enable this in distributed builds
+    // Replace std classes
+    // Not safe - do not enable this in distributed builds
     #define vector  CArray
     #define list    CList
     #define map     CMap

@@ -5,16 +5,13 @@
  *  FILE:        game_sa/TaskCarSA.h
  *  PURPOSE:     Car game tasks
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <game/TaskCar.h>
-
 #include "CVehicleSA.h"
 #include "TaskSA.h"
 
@@ -71,18 +68,18 @@ public:
 
     int GetTargetDoor()
     {
-        CTaskComplexEnterCarSAInterface* thisInterface = (CTaskComplexEnterCarSAInterface*)this->GetInterface();
+        CTaskComplexEnterCarSAInterface* thisInterface = (CTaskComplexEnterCarSAInterface*)GetInterface();
         return thisInterface->m_iTargetDoor;
     }
     void SetTargetDoor(int iDoor)
     {
-        CTaskComplexEnterCarSAInterface* thisInterface = (CTaskComplexEnterCarSAInterface*)this->GetInterface();
+        CTaskComplexEnterCarSAInterface* thisInterface = (CTaskComplexEnterCarSAInterface*)GetInterface();
         thisInterface->m_iTargetDoor = iDoor;
     }
 
     int GetEnterCarStartTime()
     {
-        CTaskComplexEnterCarSAInterface* thisInterface = (CTaskComplexEnterCarSAInterface*)this->GetInterface();
+        CTaskComplexEnterCarSAInterface* thisInterface = (CTaskComplexEnterCarSAInterface*)GetInterface();
         return thisInterface->m_iEnterCarStartTime;
     }
 };
@@ -183,7 +180,7 @@ public:
 
     int GetTargetDoor()
     {
-        CTaskComplexLeaveCarSAInterface* thisInterface = (CTaskComplexLeaveCarSAInterface*)this->GetInterface();
+        CTaskComplexLeaveCarSAInterface* thisInterface = (CTaskComplexLeaveCarSAInterface*)GetInterface();
         return thisInterface->m_iTargetDoor;
     }
 };

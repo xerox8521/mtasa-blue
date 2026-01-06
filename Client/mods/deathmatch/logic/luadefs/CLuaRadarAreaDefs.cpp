@@ -6,7 +6,7 @@
  *  FILE:        mods/shared_logic/luadefs/CLuaRadarAreaDefs.cpp
  *  PURPOSE:     Lua radar area definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -15,14 +15,9 @@
 void CLuaRadarAreaDefs::LoadFunctions()
 {
     constexpr static const std::pair<const char*, lua_CFunction> functions[]{
-        {"createRadarArea", CreateRadarArea},
-        {"getRadarAreaColor", GetRadarAreaColor},
-        {"getRadarAreaSize", GetRadarAreaSize},
-        {"isRadarAreaFlashing", IsRadarAreaFlashing},
-        {"setRadarAreaColor", SetRadarAreaColor},
-        {"setRadarAreaFlashing", SetRadarAreaFlashing},
-        {"setRadarAreaSize", SetRadarAreaSize},
-        {"isInsideRadarArea", IsInsideRadarArea},
+        {"createRadarArea", CreateRadarArea},         {"getRadarAreaColor", GetRadarAreaColor}, {"getRadarAreaSize", GetRadarAreaSize},
+        {"isRadarAreaFlashing", IsRadarAreaFlashing}, {"setRadarAreaColor", SetRadarAreaColor}, {"setRadarAreaFlashing", SetRadarAreaFlashing},
+        {"setRadarAreaSize", SetRadarAreaSize},       {"isInsideRadarArea", IsInsideRadarArea},
     };
 
     // Add functions

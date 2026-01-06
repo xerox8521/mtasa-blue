@@ -5,18 +5,21 @@
  *  FILE:        game_sa/CPointLightsSA.cpp
  *  PURPOSE:     PointLights entity
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
 #include "StdInc.h"
+#include "CPointLightsSA.h"
+#include "CEntitySA.h"
 
 using CHeli_SearchLightCone_t = void(__cdecl*)(int handleId, CVector startPos, CVector endPos, float radius1, float unknownConstant, int unkown1,
                                                bool renderSpot, CVector* unkown3, CVector* unkown4, CVector* unknown5, int unknown6, float radius2);
 using CHeli_PreSearchLightCone_t = int(__cdecl*)();
 using CHeli_PostSearchLightCone_t = int(__cdecl*)();
 
-void CPointLightsSA::AddLight(int iMode, const CVector vecPosition, CVector vecDirection, float fRadius, SColor color, unsigned char uc_8, bool bCreatesShadow,
-                              CEntity* pAffected)
+void CPointLightsSA::AddLight(int iMode, const CVector vecPosition, CVector vecDirection, float fRadius, SharedUtil::SColor color, unsigned char uc_8,
+                              bool bCreatesShadow, CEntity* pAffected)
 {
     DWORD dwEntityInterface = 0;
     if (pAffected)
@@ -25,7 +28,7 @@ void CPointLightsSA::AddLight(int iMode, const CVector vecPosition, CVector vecD
     float fPosX = vecPosition.fX, fPosY = vecPosition.fY, fPosZ = vecPosition.fZ;
     float fDirX = vecDirection.fX, fDirY = vecDirection.fY, fDirZ = vecDirection.fZ;
     float fRed = (float)color.R / 255, fGreen = (float)color.G / 255, fBlue = (float)color.B / 255;
-    _asm
+    __asm
     {
         push    dwEntityInterface
         push    bCreatesShadow

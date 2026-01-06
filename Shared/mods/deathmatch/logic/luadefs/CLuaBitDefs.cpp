@@ -4,31 +4,22 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        Shared/mods/deathmatch/logic/luadefs/CLuaBitDefs.h
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
-
-#define mask(n) ((1 << (n)) - 1)
+#include "CLuaBitDefs.h"
+#include "CScriptArgReader.h"
 
 void CLuaBitDefs::LoadFunctions()
 {
     constexpr static const std::pair<const char*, lua_CFunction> functions[]{
-        {"bitAnd", bitAnd},
-        {"bitNot", bitNot},
-        {"bitOr", bitOr},
-        {"bitTest", bitTest},
-        {"bitXor", bitXor},
+        {"bitAnd", bitAnd},         {"bitNot", bitNot},         {"bitOr", bitOr},         {"bitTest", bitTest},     {"bitXor", bitXor},
 
-        {"bitLRotate", bitLRotate},
-        {"bitRRotate", bitRRotate},
-        {"bitLShift", bitLShift},
-        {"bitRShift", bitRShift},
-        {"bitArShift", bitArShift},
+        {"bitLRotate", bitLRotate}, {"bitRRotate", bitRRotate}, {"bitLShift", bitLShift}, {"bitRShift", bitRShift}, {"bitArShift", bitArShift},
 
-        {"bitExtract", bitExtract},
-        {"bitReplace", bitReplace},
+        {"bitExtract", bitExtract}, {"bitReplace", bitReplace},
     };
 
     // Add functions
@@ -359,7 +350,7 @@ int CLuaBitDefs::bitExtract(lua_State* luaVM)
 
         if (!argStream.HasErrors())
         {
-            lua_pushnumber(luaVM, (uiVar >> iField) & mask(iWidth));
+            lua_pushnumber(luaVM, (uiVar >> iField) & BYTE_MASK(iWidth));
             return 1;
         }
     }
@@ -398,7 +389,7 @@ int CLuaBitDefs::bitReplace(lua_State* luaVM)
 
         if (!argStream.HasErrors())
         {
-            int iMask = mask(iWidth);
+            int iMask = BYTE_MASK(iWidth);
 
             // Erase bits outside given width
             uiReplaceValue &= iMask;

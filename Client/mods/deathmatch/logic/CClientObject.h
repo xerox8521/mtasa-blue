@@ -12,6 +12,7 @@ class CClientObject;
 
 #pragma once
 
+#include <game/CObject.h>
 #include "CClientStreamElement.h"
 #include "CClientModel.h"
 
@@ -117,6 +118,9 @@ public:
 
     bool IsBeingRespawned() { return m_bBeingRespawned; };
     void SetBeingRespawned(bool bBeingRespawned) { m_bBeingRespawned = bBeingRespawned; };
+
+    bool IsOnFire() override { return m_pObject ? m_pObject->IsOnFire() : false; }
+    bool SetOnFire(bool onFire) override { return m_pObject ? m_pObject->SetOnFire(onFire) : false; };
 
 protected:
     void StreamIn(bool bInstantly);

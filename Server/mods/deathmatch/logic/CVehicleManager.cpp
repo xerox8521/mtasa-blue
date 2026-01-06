@@ -5,18 +5,21 @@
  *  FILE:        mods/deathmatch/logic/CVehicleManager.cpp
  *  PURPOSE:     Vehicle entity manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CVehicleManager.h"
+#include "Utils.h"
+#include "lua/LuaCommon.h"
 
 static const SFixedArray<unsigned char, 212> g_ucMaxPassengers = {{3, 1,   1,   1,   3,   3, 0,   1,  1, 3, 1, 1,   1, 3, 1, 1,            // 400->415
                                                                    3, 1,   3,   1,   3,   3, 1,   1,  1, 0, 3, 3,   3, 1, 0, 8,            // 416->431
                                                                    0, 1,   1,   255, 1,   8, 3,   1,  3, 0, 1, 1,   1, 3, 0, 1,            // 432->447
                                                                    0, 1,   255, 1,   0,   0, 0,   1,  1, 1, 3, 3,   1, 1, 1,               // 448->462
                                                                    1, 1,   1,   3,   3,   1, 1,   3,  1, 0, 0, 1,   1, 0, 1, 1,            // 463->478
-                                                                   3, 1,   0,   3,   1,   0, 0,   0,  3, 1, 1, 3,   1, 3, 0, 1,            // 479->494
+                                                                   3, 1,   0,   3,   3,   0, 0,   0,  3, 1, 1, 3,   1, 3, 0, 1,            // 479->494
                                                                    1, 1,   3,   3,   1,   1, 1,   1,  1, 1, 1, 1,   3, 1, 0, 0,            // 495->510
                                                                    1, 0,   0,   1,   1,   3, 1,   1,  0, 0, 1, 1,   1, 1, 1, 1,            // 511->526
                                                                    1, 1,   3,   0,   0,   0, 1,   1,  1, 1, 1, 1,   0, 3, 1,               // 527->541
@@ -572,6 +575,7 @@ bool CVehicleManager::HasDoors(unsigned short usModel)
             case VT_MOWER:
             case VT_RCCAM:
             case VT_RCGOBLIN:
+            case VT_BLOODRA:
                 break;
             default:
                 bHasDoors = true;
@@ -591,8 +595,8 @@ void CVehicleManager::GetVehiclesOfType(unsigned int uiModel, lua_State* luaVM)
     assert(luaVM);
 
     // Add all the matching vehicles to the table
-    unsigned int              uiIndex = 0;
-    list<CVehicle*>::iterator iter = m_List.begin();
+    unsigned int                   uiIndex = 0;
+    std::list<CVehicle*>::iterator iter = m_List.begin();
     for (; iter != m_List.end(); ++iter)
     {
         if ((*iter)->GetModel() == uiModel)

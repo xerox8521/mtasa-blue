@@ -5,11 +5,18 @@
  *  FILE:        mods/deathmatch/logic/CPerfStat.SqliteTiming.cpp
  *  PURPOSE:     Performance stats class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPerfStatManager.h"
+#include "CRegistry.h"
+#include "CGame.h"
+#include "CResource.h"
+#include "CResourceManager.h"
+
+struct lua_State;
 
 namespace
 {

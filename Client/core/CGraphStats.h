@@ -4,9 +4,11 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        core/CGraphStats.h
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
+#pragma once
 
 #define TIMING_GRAPH(name) \
     GetGraphStats()->AddTimingPoint( name );
@@ -23,6 +25,7 @@ public:
     virtual void SetEnabled(bool bEnabled) = 0;
     virtual bool IsEnabled() = 0;
     virtual void AddTimingPoint(const char* szName) = 0;
+    virtual void RemoveTimingPoint(const char* szName) = 0;
 };
 
 CGraphStatsInterface* GetGraphStats();

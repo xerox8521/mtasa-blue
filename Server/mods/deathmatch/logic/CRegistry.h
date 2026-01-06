@@ -5,11 +5,9 @@
  *  FILE:        mods/deathmatch/logic/CRegistry.h
  *  PURPOSE:     SQLite registry abstraction class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
-
-typedef CAutoRefedPointer<struct CRegistryResultData> CRegistryResult;
 
 #pragma once
 
@@ -17,10 +15,9 @@ typedef CAutoRefedPointer<struct CRegistryResultData> CRegistryResult;
 #include <list>
 #include <vector>
 #include <string>
-#include "../../../vendor/sqlite/sqlite3.h"
+#include <sqlite/sqlite3.h>
 
-// Only used for identifying 8 byte integers in varargs list
-#define SQLITE_INTEGER64 10
+typedef CAutoRefedPointer<struct CRegistryResultData> CRegistryResult;
 
 class CRegistry
 {

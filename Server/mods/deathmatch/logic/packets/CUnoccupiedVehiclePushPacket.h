@@ -5,13 +5,15 @@
  *  FILE:        mods/deathmatch/logic/packets/CUnoccupiedVehiclePushPacket.h
  *  PURPOSE:     Unoccupied vehicle push synchronization packet class ( Change syncer to the pusher of the vehicle to make it neater. )
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
 #include "CPacket.h"
+#include <net/SyncStructures.h>
+
 class CVehicle;
 
 class CUnoccupiedVehiclePushPacket final : public CPacket

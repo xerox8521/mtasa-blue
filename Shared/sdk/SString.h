@@ -5,7 +5,7 @@
  *  FILE:        SString.h
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -69,7 +69,7 @@ public:
 
     // Assignment
                 operator const char*() const { return c_str(); }            // Auto assign to const char* without using c_str()
-    const char* operator*()const { return c_str(); }
+    const char* operator*() const { return c_str(); }
 
     // Functions
     void           Split(const SString& strDelim, std::vector<SString>& outResult, unsigned int uiMaxAmount = 0, unsigned int uiMinAmount = 0) const;
@@ -98,6 +98,10 @@ public:
     void           AssignLeft(const char* szOther, uint uiMaxLength);
 };
 
+// When to use SStringX over SString:
+// - (Potential) macro conversions
+// - Trouble with implicit conversions
+// - Situations where a length parameter is needed
 class SStringX : public SString
 {
 public:
@@ -124,6 +128,8 @@ struct SCharStringRef
 template <class STRING_TYPE, class CHAR_TYPE>
 class TSplitString : public std::vector<const CHAR_TYPE*>
 {
+    using std::vector<const CHAR_TYPE*>::push_back;
+
 public:
     TSplitString() {}
     TSplitString(const STRING_TYPE& strInput, const STRING_TYPE& strDelim, unsigned int uiMaxAmount = 0, unsigned int uiMinAmount = 0)

@@ -5,13 +5,19 @@
  *  FILE:        game_sa/CPedDamageResponseCalculatorSA.h
  *  PURPOSE:     Header file for ped damage response calculator
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
 #include <game/CPedDamageResponseCalculator.h>
+#include <game/CPed.h>
+
+class CEntity;
+class CEntitySAInterface;
+class CPed;
+class CPedDamageResponse;
 
 #define FUNC_CPedDamageResponseCalculator_Constructor               0x4ad3f0
 #define FUNC_CPedDamageResponseCalculator_Destructor                0x4ad420

@@ -8,7 +8,7 @@
  *  "Debugging Applications" (Microsoft Press)
  *  Copyright (c) 1997-2000 John Robbins -- All rights reserved.
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -27,7 +27,7 @@ CONDITIONAL COMPILATION :
 #include "CCrashHandlerAPI.h"
 #ifdef WIN32
 
-#ifndef _WIN64
+#ifdef _M_IX86
     #include <SharedUtil.Detours.h>
 #endif
 
@@ -89,7 +89,7 @@ BOOL __stdcall SetCrashHandlerFilter(PFNCHFILTFN pFn)
     }
     else
     {
-        if (TRUE == IsBadCodePtr((FARPROC)pFn))
+        if (TRUE == IsBadCodePtr(reinterpret_cast<FARPROC>(static_cast<void*>(pFn))))
         {
             return (FALSE);
         }
@@ -102,9 +102,9 @@ BOOL __stdcall SetCrashHandlerFilter(PFNCHFILTFN pFn)
         {
             g_pfnOrigFilt = SetUnhandledExceptionFilter(CrashHandlerExceptionFilter);
 
-#ifndef _WIN64
+#ifdef _M_IX86
             // Stop the OS from turning off our handler
-            // Ref: http://www.codeproject.com/Articles/154686/SetUnhandledExceptionFilter-and-the-C-C-Runtime-Li
+            // Ref: https://www.codeproject.com/Articles/154686/SetUnhandledExceptionFilter-and-the-C-C-Runtime-Li
             LPTOP_LEVEL_EXCEPTION_FILTER(WINAPI * RedirectedSetUnhandledExceptionFilter)
             (LPTOP_LEVEL_EXCEPTION_FILTER) = [](LPTOP_LEVEL_EXCEPTION_FILTER /*ExceptionInfo*/) -> LPTOP_LEVEL_EXCEPTION_FILTER {
                 // When the CRT calls SetUnhandledExceptionFilter with NULL parameter
@@ -120,7 +120,6 @@ BOOL __stdcall SetCrashHandlerFilter(PFNCHFILTFN pFn)
     }
     return (TRUE);
 }
-
 
 LONG __stdcall CrashHandlerExceptionFilter(EXCEPTION_POINTERS* pExPtrs)
 {
@@ -163,7 +162,7 @@ LONG __stdcall CrashHandlerExceptionFilter(EXCEPTION_POINTERS* pExPtrs)
             // it got unloaded. If some other function loaded
             // back into the same address, however, there isn't much
             // I can do.
-            if (FALSE == IsBadCodePtr((FARPROC)g_pfnCallBack))
+            if (FALSE == IsBadCodePtr(reinterpret_cast<FARPROC>(static_cast<void*>(g_pfnCallBack))))
             {
                 lRet = g_pfnCallBack(pExPtrs);
             }

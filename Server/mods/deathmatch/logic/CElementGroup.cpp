@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CElementGroup.cpp
  *  PURPOSE:     Element group class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -17,6 +17,11 @@
 // be enforced at this level).
 
 #include "StdInc.h"
+#include "CElementGroup.h"
+#include "packets/CEntityRemovePacket.h"
+#include "CGame.h"
+#include "CMapManager.h"
+#include "CPerPlayerEntity.h"
 
 extern CGame* g_pGame;
 

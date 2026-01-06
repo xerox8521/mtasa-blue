@@ -4,7 +4,7 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        WString.h
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 #pragma once
@@ -35,6 +35,8 @@ public:
     WString(const wchar_t* szText) : std::wstring(szText ? szText : L"") {}
 
     WString(const char* szText);
+
+    WString(const char16_t* szText) : std::wstring(szText ? (const wchar_t*)szText : L""){};
 
     explicit WString(const wchar_t* szFormat, ...) : std::wstring()
     {
@@ -73,7 +75,7 @@ public:
 
     // Assignment
                    operator const wchar_t*() const { return c_str(); }            // Auto assign to const wchar_t* without using c_str()
-    const wchar_t* operator*()const { return c_str(); }
+    const wchar_t* operator*() const { return c_str(); }
 
     // Functions
     void           Split(const WString& strDelim, std::vector<WString>& outResult, unsigned int uiMaxAmount = 0, unsigned int uiMinAmount = 0) const;

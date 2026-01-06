@@ -5,9 +5,16 @@
  *  FILE:        SharedUtil.File.hpp
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
+#ifndef _WIN32
+    #ifndef _LARGEFILE64_SOURCE
+        #define _LARGEFILE64_SOURCE
+    #endif
+#endif
+
 #include "SharedUtil.File.h"
 #include "SharedUtil.Defines.h"
 #include "SharedUtil.IntTypes.h"
@@ -15,7 +22,11 @@
 #include "SharedUtil.Buffer.h"
 #include <algorithm>
 
-#ifdef WIN32
+#if __cplusplus >= 201703L // C++17
+    #include <filesystem>
+#endif
+
+#ifdef _WIN32
     #ifndef NOMINMAX
     #define NOMINMAX
     #endif
@@ -27,41 +38,91 @@
 #else
     #include <dirent.h>
     #include <sys/stat.h>
+    #include <unistd.h>
+    #include <limits.h>
 #endif
 
 //
 // Returns true if the file exists
 //
-bool SharedUtil::FileExists(const SString& strFilename)
+bool SharedUtil::FileExists(const std::string& strFilename) noexcept
 {
-#ifdef WIN32
-    DWORD dwAtr = GetFileAttributes(strFilename);
-    if (dwAtr == INVALID_FILE_ATTRIBUTES)
-        return false;
-    return ((dwAtr & FILE_ATTRIBUTE_DIRECTORY) == 0);
+#if __cplusplus >= 201703L
+    namespace fs = std::filesystem;
+    std::error_code errorCode;
+    return fs::is_regular_file(strFilename.c_str(), errorCode);
 #else
-    struct stat Info;
-    if (stat(strFilename, &Info) == -1)
+    #ifdef _WIN32
+    if (strFilename.empty())
         return false;
-    return !(S_ISDIR(Info.st_mode));
+
+    try
+    {
+        const WString widePath = FromUTF8(strFilename);
+        if (!widePath.empty())
+        {
+            DWORD wideAttrs = GetFileAttributesW(widePath.c_str());
+            if (wideAttrs != INVALID_FILE_ATTRIBUTES)
+                return (wideAttrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+        }
+    }
+    catch (...)
+    {
+        // FromUTF8 failed - fall through to ANSI
+    }
+
+    DWORD ansiAttrs = GetFileAttributesA(strFilename.c_str());
+    if (ansiAttrs == INVALID_FILE_ATTRIBUTES)
+        return false;
+    return (ansiAttrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+    #else
+    struct stat s;
+    if (stat(strFilename.c_str(), &s) != 0)
+        return false;
+    return (s.st_mode & S_IFREG) != 0;
+    #endif
 #endif
 }
 
 //
 // Returns true if the directory exists
 //
-bool SharedUtil::DirectoryExists(const SString& strPath)
+bool SharedUtil::DirectoryExists(const std::string& strPath) noexcept
 {
-#ifdef WIN32
-    DWORD dwAtr = GetFileAttributes(strPath);
-    if (dwAtr == INVALID_FILE_ATTRIBUTES)
-        return false;
-    return ((dwAtr & FILE_ATTRIBUTE_DIRECTORY) != 0);
+#if __cplusplus >= 201703L
+    namespace fs = std::filesystem;
+    std::error_code errorCode;
+    return fs::is_directory(strPath.c_str(), errorCode);
 #else
-    struct stat Info;
-    if (stat(strPath, &Info) == -1)
+    #ifdef _WIN32
+    if (strPath.empty())
         return false;
-    return (S_ISDIR(Info.st_mode));
+
+    try
+    {
+        const WString widePath = FromUTF8(strPath);
+        if (!widePath.empty())
+        {
+            DWORD wideAttrs = GetFileAttributesW(widePath.c_str());
+            if (wideAttrs != INVALID_FILE_ATTRIBUTES)
+                return (wideAttrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        }
+    }
+    catch (...)
+    {
+        // FromUTF8 failed - fall through to ANSI
+    }
+
+    DWORD ansiAttrs = GetFileAttributesA(strPath.c_str());
+    if (ansiAttrs == INVALID_FILE_ATTRIBUTES)
+        return false;
+    return (ansiAttrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    #else
+    struct stat s;
+    if (stat(strPath.c_str(), &s) != 0)
+        return false;
+    return (s.st_mode & S_IFDIR) != 0;
+    #endif
 #endif
 }
 
@@ -86,14 +147,14 @@ bool SharedUtil::FileLoad(std::nothrow_t, const SString& filePath, SString& outB
     if (offset > GIBIBYTE)
         return false;
 
-#if WIN32
+#ifdef _WIN32
     WString wideFilePath;
 
     try
     {
         wideFilePath = FromUTF8(filePath);
     }
-    catch (const std::bad_alloc&)
+    catch (...)
     {
         return false;
     }
@@ -111,23 +172,57 @@ bool SharedUtil::FileLoad(std::nothrow_t, const SString& filePath, SString& outB
     if (fileSize == 0 || fileSize <= static_cast<DWORD>(offset))
         return true;
 
-    HANDLE handle = CreateFileW(wideFilePath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    constexpr int MAX_RETRY_ATTEMPTS = 20;
+    constexpr int RETRY_DELAY_MS = 10;
+
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    for (int attempt = 0; attempt < MAX_RETRY_ATTEMPTS; ++attempt)
+    {
+        handle = CreateFileW(wideFilePath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (handle != INVALID_HANDLE_VALUE)
+            break;
+
+        DWORD errorCode = GetLastError();
+        if (errorCode != ERROR_SHARING_VIOLATION && errorCode != ERROR_LOCK_VIOLATION)
+            break;
+
+        if (attempt + 1 < MAX_RETRY_ATTEMPTS)
+            Sleep(RETRY_DELAY_MS);
+    }
 
     if (handle == INVALID_HANDLE_VALUE)
         return false;
+
+    if (offset > 0)
+    {
+        LARGE_INTEGER seek{};
+        seek.QuadPart = static_cast<LONGLONG>(offset);
+        if (!SetFilePointerEx(handle, seek, nullptr, FILE_BEGIN))
+        {
+            CloseHandle(handle);
+            return false;
+        }
+    }
 
     DWORD numBytesToRead = fileSize - static_cast<DWORD>(offset);
 
     if (static_cast<size_t>(numBytesToRead) > maxSize)
         numBytesToRead = static_cast<DWORD>(maxSize);
 
+    if (numBytesToRead == 0)
+    {
+        CloseHandle(handle);
+        return true;
+    }
+
     try
     {
         outBuffer.resize(static_cast<size_t>(numBytesToRead));
     }
-    catch (const std::bad_alloc&)
+    catch (...)
     {
         CloseHandle(handle);
+        outBuffer.clear();
         return false;
     }
 
@@ -136,16 +231,24 @@ bool SharedUtil::FileLoad(std::nothrow_t, const SString& filePath, SString& outB
     if (!ReadFile(handle, &outBuffer[0], numBytesToRead, &numBytesFromRead, nullptr) || numBytesFromRead != numBytesToRead)
     {
         CloseHandle(handle);
+        outBuffer.clear();
         return false;
     }
 
     CloseHandle(handle);
     return true;
 #else
+#ifdef __APPLE__
+    struct stat info;
+
+    if (stat(filePath, &info) != 0)
+        return false;
+#else
     struct stat64 info;
 
     if (stat64(filePath, &info) != 0)
         return false;
+#endif
 
     size_t fileSize = static_cast<size_t>(info.st_size);
 
@@ -160,24 +263,43 @@ bool SharedUtil::FileLoad(std::nothrow_t, const SString& filePath, SString& outB
     if (numBytesToRead > maxSize)
         numBytesToRead = maxSize;
 
-    try
-    {
-        outBuffer.resize(numBytesToRead);
-    }
-    catch (const std::bad_alloc&)
-    {
-        return false;
-    }
-
     FILE* handle = fopen(filePath, "rb");
 
     if (!handle)
         return false;
 
-    fseek(handle, static_cast<long>(offset), SEEK_SET);
+    try
+    {
+        outBuffer.resize(numBytesToRead);
+    }
+    catch (...)
+    {
+        fclose(handle);
+        outBuffer.clear();
+        return false;
+    }
+
+#ifdef __APPLE__
+    if (fseeko(handle, static_cast<off_t>(offset), SEEK_SET) != 0)
+#else
+    if (fseeko64(handle, static_cast<off64_t>(offset), SEEK_SET) != 0)
+#endif
+    {
+        fclose(handle);
+        outBuffer.clear();
+        return false;
+    }
+
     size_t numBytesFromRead = fread(&outBuffer[0], 1, numBytesToRead, handle);
     fclose(handle);
-    return numBytesToRead == numBytesFromRead;
+
+    if (numBytesFromRead != numBytesToRead)
+    {
+        outBuffer.clear();
+        return false;
+    }
+
+    return true;
 #endif
 }
 
@@ -193,16 +315,16 @@ bool SharedUtil::FileAppend(const SString& strFilename, const SString& strBuffer
 
 bool SharedUtil::FileDelete(const SString& strFilename, bool bForce)
 {
-#ifdef WIN32
+#ifdef _WIN32
     if (bForce)
-        SetFileAttributes(strFilename, FILE_ATTRIBUTE_NORMAL);
+        SetFileAttributesW(FromUTF8(strFilename), FILE_ATTRIBUTE_NORMAL);
 #endif
     return File::Delete(strFilename) == 0;
 }
 
 bool SharedUtil::FileRename(const SString& strFilenameOld, const SString& strFilenameNew, int* pOutErrorCode)
 {
-#ifdef WIN32
+#ifdef _WIN32
     if (MoveFileExW(FromUTF8(strFilenameOld), FromUTF8(strFilenameNew), MOVEFILE_COPY_ALLOWED) == 0)
     {
         int errorCode = GetLastError();
@@ -237,29 +359,39 @@ bool SharedUtil::FileRename(const SString& strFilenameOld, const SString& strFil
 bool SharedUtil::FileLoad(const SString& strFilename, std::vector<char>& buffer, int iMaxSize, int iOffset)
 {
     buffer.clear();
-    // Open
     FILE* fh = File::Fopen(strFilename, "rb");
     if (!fh)
         return false;
-    // Get size
-    fseek(fh, 0, SEEK_END);
-    int size = ftell(fh);
 
-    // Set offset
+    fseek(fh, 0, SEEK_END);
+#ifdef _WIN32
+    int64 rawSize = _ftelli64(fh);
+#elif defined(__APPLE__)
+    int64 rawSize = ftello(fh);
+#else
+    int64 rawSize = ftello64(fh);
+#endif
+    int size = static_cast<int>(std::min<int64>(INT_MAX, rawSize));
+
     iOffset = std::min(iOffset, size);
     fseek(fh, iOffset, SEEK_SET);
     size -= iOffset;
 
     int bytesRead = 0;
-    if (size > 0 && size < 1e9)            // 1GB limit
+    if (size > 0 && size < 1e9)
     {
         size = std::min(size, iMaxSize);
-        // Allocate space
-        buffer.assign(size, 0);
-        // Read into buffer
+        try
+        {
+            buffer.assign(size, 0);
+        }
+        catch (...)
+        {
+            fclose(fh);
+            return false;
+        }
         bytesRead = fread(&buffer.at(0), 1, size, fh);
     }
-    // Close
     fclose(fh);
     return bytesRead == size;
 }
@@ -269,9 +401,9 @@ bool SharedUtil::FileLoad(const SString& strFilename, std::vector<char>& buffer,
 //
 bool SharedUtil::FileSave(const SString& strFilename, const void* pBuffer, unsigned long ulSize, bool bForce)
 {
-#ifdef WIN32
+#ifdef _WIN32
     if (bForce)
-        SetFileAttributes(strFilename, FILE_ATTRIBUTE_NORMAL);
+        SetFileAttributesW(FromUTF8(strFilename), FILE_ATTRIBUTE_NORMAL);
 #endif
 
     if (bForce)
@@ -293,9 +425,9 @@ bool SharedUtil::FileSave(const SString& strFilename, const void* pBuffer, unsig
 //
 bool SharedUtil::FileAppend(const SString& strFilename, const void* pBuffer, unsigned long ulSize, bool bForce)
 {
-#ifdef WIN32
+#ifdef _WIN32
     if (bForce)
-        SetFileAttributes(strFilename, FILE_ATTRIBUTE_NORMAL);
+        SetFileAttributesW(FromUTF8(strFilename), FILE_ATTRIBUTE_NORMAL);
 #endif
 
     FILE* fh = File::Fopen(strFilename, "ab");
@@ -320,7 +452,7 @@ uint64 SharedUtil::FileSize(const SString& strFilename)
         return 0;
     // Get size
     fseek(fh, 0, SEEK_END);
-#ifdef WIN32
+#ifdef _WIN32
     uint64 size = _ftelli64(fh);
 #elif defined(__APPLE__)
     uint64 size = ftello(fh);
@@ -337,6 +469,7 @@ uint64 SharedUtil::FileSize(const SString& strFilename)
 //
 void SharedUtil::MakeSureDirExists(const SString& strPath)
 {
+#ifdef _WIN32
     std::vector<SString> parts;
     PathConform(strPath).Split(PATH_SEPERATOR, parts);
 
@@ -357,12 +490,17 @@ void SharedUtil::MakeSureDirExists(const SString& strPath)
         // Call mkdir on this path
         File::Mkdir(strTemp);
     }
+#else
+    std::filesystem::path filePath = static_cast<std::string>(PathConform(strPath));
+    std::error_code ec{};
+    std::filesystem::create_directories(filePath.parent_path(), ec);
+#endif
 }
 
 SString SharedUtil::PathConform(const SString& strPath)
 {
     // Make slashes the right way and remove duplicates, except for UNC type indicators
-#if WIN32
+#ifdef _WIN32
     SString strTemp = strPath.Replace("/", PATH_SEPERATOR);
 #else
     SString strTemp = strPath.Replace("\\", PATH_SEPERATOR);
@@ -422,20 +560,20 @@ SString SharedUtil::PathMakeRelative(const SString& strInBasePath, const SString
 
 SString SharedUtil::GetSystemCurrentDirectory()
 {
-#ifdef WIN32
+#ifdef _WIN32
     wchar_t szResult[1024] = L"";
     GetCurrentDirectoryW(NUMELMS(szResult), szResult);
     if (IsShortPathName(szResult))
         return GetSystemLongPathName(ToUTF8(szResult));
     return ToUTF8(szResult);
 #else
-    char szBuffer[MAX_PATH];
-    getcwd(szBuffer, MAX_PATH - 1);
+    char szBuffer[PATH_MAX];
+    getcwd(szBuffer, PATH_MAX - 1);
     return szBuffer;
 #endif
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 #ifdef MTA_CLIENT
 
 SString SharedUtil::GetSystemDllDirectory()
@@ -588,7 +726,7 @@ SString SharedUtil::GetDriveNameWithNotEnoughSpace(uint uiResourcesPathMinMB, ui
 }
 
 #endif  // #ifdef MTA_CLIENT
-#endif  // #ifdef WIN32
+#endif  // #ifdef _WIN32
 
 WString SharedUtil::FromUTF8(const SString& strPath)
 {
@@ -629,7 +767,7 @@ SString SharedUtil::ToUTF8(const WString& strPath)
 #endif
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 ///////////////////////////////////////////////////////////////
 //
 // DelTree
@@ -692,9 +830,9 @@ bool SharedUtil::FileCopy(const SString& strSrc, const SString& strDest, bool bF
     if (bForce)
         MakeSureDirExists(strDest);
 
-#ifdef WIN32
+#ifdef _WIN32
     if (bForce)
-        SetFileAttributes(strDest, FILE_ATTRIBUTE_NORMAL);
+        SetFileAttributesW(FromUTF8(strDest), FILE_ATTRIBUTE_NORMAL);
 #endif
 
     FILE* fhSrc = File::Fopen(strSrc, "rb");
@@ -711,20 +849,29 @@ bool SharedUtil::FileCopy(const SString& strSrc, const SString& strDest, bool bF
     }
 
     char cBuffer[65536];
+    bool ok = true;
     while (true)
     {
         size_t dataLength = fread(cBuffer, 1, 65536, fhSrc);
         if (dataLength == 0)
+        {
+            if (ferror(fhSrc))
+                ok = false;
             break;
-        fwrite(cBuffer, 1, dataLength, fhDst);
+        }
+        if (fwrite(cBuffer, 1, dataLength, fhDst) != dataLength)
+        {
+            ok = false;
+            break;
+        }
     }
 
     fclose(fhSrc);
     fclose(fhDst);
-    return true;
+    return ok;
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 ///////////////////////////////////////////////////////////////
 //
 // FindFiles
@@ -742,21 +889,29 @@ std::vector<SString> SharedUtil::FindFiles(const SString& strInMatch, bool bFile
     if (strMatch.Right(1) == PATH_SEPERATOR)
         strMatch += "*";
 
-    WIN32_FIND_DATAW findData;
+    _WIN32_FIND_DATAW findData;
     HANDLE           hFind = FindFirstFileW(FromUTF8(strMatch), &findData);
     if (hFind != INVALID_HANDLE_VALUE)
     {
-        do
+        try
         {
-            if ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? bDirectories : bFiles)
-                if (wcscmp(findData.cFileName, L".") && wcscmp(findData.cFileName, L".."))
-                {
-                    if (bSortByDate)
-                        MapInsert(sortMap, (uint64&)findData.ftLastWriteTime, ToUTF8(findData.cFileName));
-                    else
-                        strResult.push_back(ToUTF8(findData.cFileName));
-                }
-        } while (FindNextFileW(hFind, &findData));
+            do
+            {
+                if ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? bDirectories : bFiles)
+                    if (wcscmp(findData.cFileName, L".") && wcscmp(findData.cFileName, L".."))
+                    {
+                        if (bSortByDate)
+                            MapInsert(sortMap, (uint64&)findData.ftLastWriteTime, ToUTF8(findData.cFileName));
+                        else
+                            strResult.push_back(ToUTF8(findData.cFileName));
+                    }
+            } while (FindNextFileW(hFind, &findData));
+        }
+        catch (...)
+        {
+            FindClose(hFind);
+            throw;
+        }
         FindClose(hFind);
     }
 
@@ -898,8 +1053,8 @@ SString SharedUtil::MakeUniquePath(const SString& strInPathFilename)
 
     SString strTest = strPathFilename;
     int     iCount = 1;
-#ifdef WIN32
-    while (GetFileAttributes(strTest) != INVALID_FILE_ATTRIBUTES)
+#ifdef _WIN32
+    while (GetFileAttributesW(FromUTF8(strTest)) != INVALID_FILE_ATTRIBUTES)
 #else
     while (DirectoryExists(strTest) || FileExists(strTest))
 #endif
@@ -907,6 +1062,40 @@ SString SharedUtil::MakeUniquePath(const SString& strInPathFilename)
         strTest = SString("%s_%d%s", strBeforeUniqueChar.c_str(), iCount++, strAfterUniqueChar.c_str());
     }
     return strTest;
+}
+
+// Tries to resolve the original path used for MakeUniquePath
+SString SharedUtil::MakeGenericPath(const SString& uniqueFilePath)
+{
+    if (DirectoryExists(uniqueFilePath) || FileExists(uniqueFilePath))
+        return uniqueFilePath;
+
+    SString basePath, fileName;
+    ExtractFilename(uniqueFilePath, &basePath, &fileName);
+
+    SString withoutExtension, extensionName;
+    bool    usingExtension = ExtractExtension(fileName, &withoutExtension, &extensionName);
+    size_t  underscore = withoutExtension.find_last_not_of("0123456789");
+
+    if (underscore != std::string::npos)
+    {
+        if (withoutExtension[underscore] == '_')
+        {
+            withoutExtension = withoutExtension.SubStr(0, underscore);
+
+            SString filePath;
+
+            if (usingExtension)
+                filePath = PathJoin(basePath, SString("%s.%s", withoutExtension.c_str(), extensionName.c_str()));
+            else
+                filePath = PathJoin(basePath, withoutExtension);
+
+            if (DirectoryExists(filePath) || FileExists(filePath))
+                return filePath;
+        }
+    }
+
+    return {};
 }
 
 // Conform a path string for sorting
@@ -929,14 +1118,14 @@ bool SharedUtil::IsAbsolutePath(const SString& strInPath)
 
     if (strPath.BeginsWith(PATH_SEPERATOR))
         return true;
-#ifdef WIN32
+#ifdef _WIN32
     if (strPath.length() > 0 && strPath[1] == ':')
         return true;
 #endif
     return false;
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 bool SharedUtil::IsShortPathName(const char* szPath)
 {
     return strchr(szPath, '~') != NULL;
@@ -964,11 +1153,11 @@ SString SharedUtil::GetSystemLongPathName(const SString& strPath)
         return strPath;
     return ToUTF8(szBuffer);
 }
-#endif // WIN32
+#endif // _WIN32
 
 FILE* SharedUtil::File::Fopen(const char* szFilename, const char* szMode)
 {
-#ifdef WIN32
+#ifdef _WIN32
     return _wfsopen(FromUTF8(szFilename), FromUTF8(szMode), _SH_DENYNO);
 #else
     return fopen(szFilename, szMode);
@@ -977,7 +1166,7 @@ FILE* SharedUtil::File::Fopen(const char* szFilename, const char* szMode)
 
 int SharedUtil::File::Mkdir(const char* szPath, int iMode)
 {
-#ifdef WIN32
+#ifdef _WIN32
     return _wmkdir(FromUTF8(szPath));
 #else
     return mkdir(szPath, (mode_t)iMode);
@@ -986,7 +1175,7 @@ int SharedUtil::File::Mkdir(const char* szPath, int iMode)
 
 int SharedUtil::File::Chdir(const char* szPath)
 {
-#ifdef WIN32
+#ifdef _WIN32
     return _wchdir(FromUTF8(szPath));
 #else
     return chdir(szPath);
@@ -995,7 +1184,7 @@ int SharedUtil::File::Chdir(const char* szPath)
 
 int SharedUtil::File::Rmdir(const char* szPath)
 {
-#ifdef WIN32
+#ifdef _WIN32
     return _wrmdir(FromUTF8(szPath));
 #else
     return rmdir(szPath);
@@ -1004,7 +1193,7 @@ int SharedUtil::File::Rmdir(const char* szPath)
 
 int SharedUtil::File::Delete(const char* szFilename)
 {
-#ifdef WIN32
+#ifdef _WIN32
     return _wremove(FromUTF8(szFilename));
 #else
     return remove(szFilename);
@@ -1013,9 +1202,108 @@ int SharedUtil::File::Delete(const char* szFilename)
 
 int SharedUtil::File::Rename(const char* szOldFilename, const char* szNewFilename)
 {
-#ifdef WIN32
+#ifdef _WIN32
     return _wrename(FromUTF8(szOldFilename), FromUTF8(szNewFilename));
 #else
     return rename(szOldFilename, szNewFilename);
 #endif
+}
+
+std::vector<std::string> SharedUtil::ListDir(const char* szPath) noexcept
+{
+    std::vector<std::string> entries;
+#if __cplusplus >= 201703L
+    namespace fs = std::filesystem;
+    if (!DirectoryExists(szPath))
+        return {};
+
+    try
+    {
+        for (const auto& entry : fs::directory_iterator(szPath))
+        {
+            if (entry.is_regular_file() || entry.is_directory())
+                entries.push_back(entry.path().filename().string());
+        }
+    }
+    catch (...) {} // catch all possible errors and ignore them
+#else
+    #ifdef _WIN32
+    std::string search_path = szPath;
+    if (search_path.empty())
+        return {};
+
+    if (search_path.back() != '/')
+        search_path += "/*";
+
+    try
+    {
+        WString wideSearchPath = FromUTF8(search_path);
+        WIN32_FIND_DATAW fd;
+        HANDLE hFind = ::FindFirstFileW(wideSearchPath.c_str(), &fd);
+
+        if (hFind != INVALID_HANDLE_VALUE)
+        {
+            try
+            {
+                do
+                {
+                    entries.push_back(ToUTF8(fd.cFileName));
+                } while (::FindNextFileW(hFind, &fd));
+            }
+            catch (...)
+            {
+                ::FindClose(hFind);
+                throw;
+            }
+            ::FindClose(hFind);
+        }
+        return entries;
+    }
+    catch (...)
+    {
+        entries.clear();
+    }
+
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = ::FindFirstFileA(search_path.c_str(), &fd);
+    if (hFind == INVALID_HANDLE_VALUE)
+        return {};
+
+    try
+    {
+        do
+        {
+            entries.push_back(fd.cFileName);
+        } while (::FindNextFileA(hFind, &fd));
+    }
+    catch (...)
+    {
+        ::FindClose(hFind);
+        return {};
+    }
+    ::FindClose(hFind);
+
+    #else
+    DIR*           dir;
+    struct dirent* ent;
+    if (!(dir = opendir(szPath)))
+        return {};
+
+    try
+    {
+        while ((ent = readdir(dir)))
+        {
+            entries.push_back(ent->d_name);
+        }
+    }
+    catch (...)
+    {
+        closedir(dir);
+        return {};
+    }
+    closedir(dir);
+    #endif
+#endif
+
+    return entries;
 }

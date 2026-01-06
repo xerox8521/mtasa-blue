@@ -5,7 +5,7 @@
  *  FILE:        sdk/game/CControllerConfigManager.h
  *  PURPOSE:     Controller configuration manager interface
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -206,4 +206,5 @@ public:
     virtual void  SetVerticalAimSensitivity(float fSensitivity) = 0;
     virtual float GetVerticalAimSensitivityRawValue() = 0;
     virtual void  SetVerticalAimSensitivityRawValue(float fRawValue) = 0;
+    virtual void  SetVerticalAimSensitivitySameAsHorizontal(bool enable) = 0;
 };

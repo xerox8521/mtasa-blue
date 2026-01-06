@@ -4,11 +4,17 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        mods/deathmatch/logic/CResource.AclRequest.cpp
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CResource.h"
+#include "CAccessControlList.h"
+#include "CAccessControlListManager.h"
+#include "CAclRightName.h"
+#include "CGame.h"
+#include "lua/CLuaFunctionParseHelpers.h"
 
 ///////////////////////////////////////////////////////////////
 //
@@ -117,9 +123,6 @@ bool CResource::HasAutoPermissions(CXMLNode* pNodeAclRequest)
 ///////////////////////////////////////////////////////////////
 void CResource::RefreshAutoPermissions(CXMLNode* pNodeAclRequest)
 {
-    // Check if permissions already active
-    if (HasAutoPermissions(pNodeAclRequest))
-        return;
 
     // Ensure group and acl exist
     CAccessControlListGroup* pAutoGroup = g_pGame->GetACLManager()->AddGroup(GetAutoGroupName());

@@ -5,11 +5,19 @@
  *  FILE:        mods/deathmatch/logic/CMapEventManager.cpp
  *  PURPOSE:     Map event manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CMapEventManager.h"
+#include "CMapEvent.h"
+#include "lua/CLuaMain.h"
+#include "CGame.h"
+#include "CDebugHookManager.h"
+#include "CScriptDebugging.h"
+#include "CDummy.h"
+#include "CPerfStatManager.h"
 
 CMapEventManager::CMapEventManager()
 {
@@ -138,6 +146,7 @@ bool CMapEventManager::Call(const char* szName, const CLuaArguments& Arguments, 
 
     // Copy the results into a array in case m_EventsMap is modified during the call
     std::vector<CMapEvent*> matchingEvents;
+    matchingEvents.reserve(8);
     for (EventsIter iter = itPair.first; iter != itPair.second; ++iter)
         matchingEvents.push_back(iter->second);
 

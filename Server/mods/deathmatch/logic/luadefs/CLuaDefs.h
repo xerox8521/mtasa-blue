@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/luadefs/CLuaDefs.h
  *  PURPOSE:     Lua definitions base class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -21,6 +21,7 @@
 #include "../CMainConfig.h"
 #include "../CMarkerManager.h"
 #include "../CObjectManager.h"
+#include "../CBuildingManager.h"
 #include "../CPickupManager.h"
 #include "../CPlayerManager.h"
 #include "../CRadarAreaManager.h"
@@ -72,6 +73,7 @@ protected:
     static CLuaManager*               m_pLuaManager;
     static CMarkerManager*            m_pMarkerManager;
     static CObjectManager*            m_pObjectManager;
+    static CBuildingManager*          m_pBuildingManager;
     static CPickupManager*            m_pPickupManager;
     static CPlayerManager*            m_pPlayerManager;
     static CRadarAreaManager*         m_pRadarAreaManager;
@@ -85,6 +87,7 @@ protected:
     static CResourceManager*          m_pResourceManager;
     static CAccessControlListManager* m_pACLManager;
     static CMainConfig*               m_pMainConfig;
+    static inline CLuaModuleManager*  m_pLuaModuleManager = nullptr;
 
 protected:
     // Old style: Only warn on failure. This should
@@ -93,7 +96,7 @@ protected:
     template <auto ReturnOnError, auto T>
     static inline int ArgumentParserWarn(lua_State* L)
     {
-        return CLuaFunctionParser<false, ReturnOnError, T>()(L, m_pScriptDebugging);
+        return CLuaFunctionParser<false, ReturnOnError, remove_noexcept_fn_v<T>>()(L, m_pScriptDebugging);
     }
 
     // Special case for overloads
@@ -103,8 +106,8 @@ protected:
     {
         // Pad functions to have the same number of parameters by
         // filling both up to the larger number of parameters with dummy_type arguments
-        using PaddedFunctionA = pad_func_with_func<FunctionA, FunctionB>;
-        using PaddedFunctionB = pad_func_with_func<FunctionB, FunctionA>;
+        using PaddedFunctionA = pad_func_with_func<remove_noexcept_fn_v<FunctionA>, remove_noexcept_fn_v<FunctionB>>;
+        using PaddedFunctionB = pad_func_with_func<remove_noexcept_fn_v<FunctionB>, remove_noexcept_fn_v<FunctionA>>;
         // Combine functions
         using Overload = CLuaOverloadParser<PaddedFunctionA::Call, PaddedFunctionB::Call>;
 
@@ -115,7 +118,7 @@ protected:
     template <auto T>
     static inline int ArgumentParser(lua_State* L)
     {
-        return CLuaFunctionParser<true, nullptr, T>()(L, m_pScriptDebugging);
+        return CLuaFunctionParser<true, nullptr, remove_noexcept_fn_v<T>>()(L, m_pScriptDebugging);
     }
 
     // Special case for overloads
@@ -125,8 +128,8 @@ protected:
     {
         // Pad functions to have the same number of parameters by
         // filling both up to the larger number of parameters with dummy_type arguments
-        using PaddedFunctionA = pad_func_with_func<FunctionA, FunctionB>;
-        using PaddedFunctionB = pad_func_with_func<FunctionB, FunctionA>;
+        using PaddedFunctionA = pad_func_with_func<remove_noexcept_fn_v<FunctionA>, remove_noexcept_fn_v<FunctionB>>;
+        using PaddedFunctionB = pad_func_with_func<remove_noexcept_fn_v<FunctionB>, remove_noexcept_fn_v<FunctionA>>;
         // Combine functions
         using Overload = CLuaOverloadParser<PaddedFunctionA::Call, PaddedFunctionB::Call>;
 

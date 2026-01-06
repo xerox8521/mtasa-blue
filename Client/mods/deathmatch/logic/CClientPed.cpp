@@ -9,7 +9,30 @@
  *****************************************************************************/
 
 #include "StdInc.h"
-#include "game/CAnimBlendAssocGroup.h"
+#include <game/CAEVehicleAudioEntity.h>
+#include <game/CAnimBlendAssocGroup.h>
+#include <game/CAnimManager.h>
+#include <game/CCam.h>
+#include <game/CCarEnterExit.h>
+#include <game/CColPoint.h>
+#include <game/CPedIntelligence.h>
+#include <game/CPedSound.h>
+#include <game/CStreaming.h>
+#include <game/CTaskManager.h>
+#include <game/CTasks.h>
+#include <game/CVisibilityPlugins.h>
+#include <game/CWeapon.h>
+#include <game/CWeaponStat.h>
+#include <game/CWeaponStatManager.h>
+#include <game/TaskBasic.h>
+#include <game/TaskCar.h>
+#include <game/TaskCarAccessories.h>
+#include <game/TaskIK.h>
+#include <game/TaskJumpFall.h>
+#include <game/TaskPhysicalResponse.h>
+#include <game/TaskAttack.h>
+#include <game/TaskSimpleSwim.h>
+#include "enums/VehicleType.h"
 
 using std::list;
 using std::vector;
@@ -17,10 +40,10 @@ using std::vector;
 extern CClientGame* g_pClientGame;
 
 #ifndef M_PI
-#define M_PI 3.14159265358979323846
+    #define M_PI 3.14159265358979323846
 #endif
 
-#define INVALID_VALUE   0xFFFFFFFF
+#define INVALID_VALUE 0xFFFFFFFF
 
 #define PED_INTERPOLATION_WARP_THRESHOLD            5   // Minimal threshold
 #define PED_INTERPOLATION_WARP_THRESHOLD_FOR_SPEED  5   // Units to increment the threshold per speed unit
@@ -108,7 +131,7 @@ void CClientPed::Init(CClientManager* pManager, unsigned long ulModelID, bool bI
     m_uiOccupiedVehicleSeat = 0xFF;
     m_bHealthLocked = false;
     m_bDontChangeRadio = false;
-    m_bArmorLocked = false;
+    m_armorLocked = false;
     m_ulLastOnScreenTime = 0;
     m_pLoadedModelInfo = NULL;
     m_pOutOfVehicleWeaponSlot = WEAPONSLOT_MAX;            // WEAPONSLOT_MAX = invalid
@@ -136,12 +159,13 @@ void CClientPed::Init(CClientManager* pManager, unsigned long ulModelID, bool bI
     m_bVisible = true;
     m_bUsesCollision = true;
     m_fHealth = 100.0f;
-    m_fArmor = 0.0f;
+    m_armor = 0.0f;
     m_bDead = false;
     m_bWorldIgnored = false;
     m_fCurrentRotation = 0.0f;
     m_fMoveSpeed = 0.0f;
     m_bCanBeKnockedOffBike = true;
+    m_bBleeding = false;
     RemoveAllWeapons();            // Set all our weapon values to unarmed
     m_bHasJetPack = false;
     m_FightingStyle = STYLE_GRAB_KICK;
@@ -208,12 +232,17 @@ void CClientPed::Init(CClientManager* pManager, unsigned long ulModelID, bool bI
     m_MovementStateNames[MOVEMENTSTATE_JOG] = "jog";
     m_MovementStateNames[MOVEMENTSTATE_SPRINT] = "sprint";
     m_MovementStateNames[MOVEMENTSTATE_CROUCH] = "crouch";
-    // These two are inactive for now
     m_MovementStateNames[MOVEMENTSTATE_CRAWL] = "crawl";
     m_MovementStateNames[MOVEMENTSTATE_ROLL] = "roll";
     m_MovementStateNames[MOVEMENTSTATE_JUMP] = "jump";
     m_MovementStateNames[MOVEMENTSTATE_FALL] = "fall";
     m_MovementStateNames[MOVEMENTSTATE_CLIMB] = "climb";
+    m_MovementStateNames[MOVEMENTSTATE_SWIM] = "swim";
+    m_MovementStateNames[MOVEMENTSTATE_WALK_TO_POINT] = "walk_to_point";
+    m_MovementStateNames[MOVEMENTSTATE_ASCENT_JETPACK] = "ascent_jetpack";
+    m_MovementStateNames[MOVEMENTSTATE_DESCENT_JETPACK] = "descent_jetpack";
+    m_MovementStateNames[MOVEMENTSTATE_JETPACK] = "jetpack_flying";
+    m_MovementStateNames[MOVEMENTSTATE_HANGING] = "hanging";
 
     // Create the player model
     if (m_bIsLocalPlayer)
@@ -228,6 +257,9 @@ void CClientPed::Init(CClientManager* pManager, unsigned long ulModelID, bool bI
 
         // Init the local player
         _CreateLocalModel();
+
+        // Init default analog control states
+        CClientPad::InitAnalogControlStates();
 
         // Give full health, no armor, no weapons and put him at a safe location
         SetHealth(GetMaxHealth());
@@ -299,6 +331,7 @@ CClientPed::~CClientPed()
         m_pClothes->DefaultClothes(true);
         SetCanBeKnockedOffBike(true);
         SetHeadless(false);
+        SetBleeding(false);
     }
     else
     {
@@ -514,21 +547,17 @@ void CClientPed::SetPosition(const CVector& vecPosition, bool bResetInterpolatio
         // Don't set the actual position if we're in a vehicle
         if (!GetRealOccupiedVehicle())
         {
-            // Set it only if we're not in a vehicle or not working on getting in/out
-            if (!m_pOccupiedVehicle || GetVehicleInOutState() != VEHICLE_INOUT_GETTING_OUT)
+            // Is this the local player?
+            if (m_bIsLocalPlayer)
             {
-                // Is this the local player?
-                if (m_bIsLocalPlayer)
-                {
-                    // If move is big enough, do ground checks
-                    float DistanceMoved = (m_Matrix.vPos - vecPosition).Length();
-                    if (DistanceMoved > 50 && !IsFrozen() && bAllowGroundLoadFreeze)
-                        SetFrozenWaitingForGroundToLoad(true);
-                }
-
-                // Set the real position
-                m_pPlayerPed->SetPosition(const_cast<CVector*>(&vecPosition));
+                // If move is big enough, do ground checks
+                float DistanceMoved = (m_Matrix.vPos - vecPosition).Length();
+                if (DistanceMoved > 50 && !IsFrozen() && bAllowGroundLoadFreeze)
+                    SetFrozenWaitingForGroundToLoad(true);
             }
+
+            // Set the real position
+            m_pPlayerPed->SetPosition(const_cast<CVector*>(&vecPosition));
         }
     }
 
@@ -588,8 +617,14 @@ void CClientPed::Teleport(const CVector& vecPosition)
                         SetFrozenWaitingForGroundToLoad(true);
                 }
 
+                // Player has jetpack?
+                bool hasJetpack = HasJetPack();
+
                 // Set the real position
                 m_pPlayerPed->Teleport(vecPosition.fX, vecPosition.fY, vecPosition.fZ);
+
+                // Restore jetpack
+                SetHasJetPack(hasJetpack);
             }
         }
     }
@@ -812,7 +847,7 @@ void CClientPed::SetMoveSpeed(const CVector& vecMoveSpeed)
 {
     if (m_pPlayerPed)
     {
-        m_pPlayerPed->SetMoveSpeed(const_cast<CVector*>(&vecMoveSpeed));
+        m_pPlayerPed->SetMoveSpeed(vecMoveSpeed);
     }
     m_vecMoveSpeed = vecMoveSpeed;
 }
@@ -988,12 +1023,12 @@ void CClientPed::SetTargetTarget(unsigned long ulDelay, const CVector& vecSource
         float fRadius = DistanceBetweenPoints3D(m_vecTargetSource, m_vecTargetTarget);
 
         // Grab the angle of the source vector and the angle of the target vector relative to the source vector that applies
-        m_vecBeginTargetAngle.fX = acos((m_vecBeginTarget.fX - m_vecBeginSource.fX) / fRadius);
-        m_vecBeginTargetAngle.fY = acos((m_vecBeginTarget.fY - m_vecBeginSource.fY) / fRadius);
-        m_vecBeginTargetAngle.fZ = acos((m_vecBeginTarget.fZ - m_vecBeginSource.fZ) / fRadius);
-        m_vecTargetTargetAngle.fX = acos((m_vecTargetTarget.fX - m_vecTargetSource.fX) / fRadius);
-        m_vecTargetTargetAngle.fY = acos((m_vecTargetTarget.fY - m_vecTargetSource.fY) / fRadius);
-        m_vecTargetTargetAngle.fZ = acos((m_vecTargetTarget.fZ - m_vecTargetSource.fZ) / fRadius);
+        m_vecBeginTargetAngle.fX = acos(Clamp(-1.0f, (m_vecBeginTarget.fX - m_vecBeginSource.fX) / fRadius, 1.0f));
+        m_vecBeginTargetAngle.fY = acos(Clamp(-1.0f, (m_vecBeginTarget.fY - m_vecBeginSource.fY) / fRadius, 1.0f));
+        m_vecBeginTargetAngle.fZ = acos(Clamp(-1.0f, (m_vecBeginTarget.fZ - m_vecBeginSource.fZ) / fRadius, 1.0f));
+        m_vecTargetTargetAngle.fX = acos(Clamp(-1.0f, (m_vecTargetTarget.fX - m_vecTargetSource.fX) / fRadius, 1.0f));
+        m_vecTargetTargetAngle.fY = acos(Clamp(-1.0f, (m_vecTargetTarget.fY - m_vecTargetSource.fY) / fRadius, 1.0f));
+        m_vecTargetTargetAngle.fZ = acos(Clamp(-1.0f, (m_vecTargetTarget.fZ - m_vecTargetSource.fZ) / fRadius, 1.0f));
 
         // Grab the angle to interpolate and make sure it's below pi and above -pi (shortest path of interpolation)
         m_vecTargetInterpolateAngle = m_vecTargetTargetAngle - m_vecBeginTargetAngle;
@@ -1110,9 +1145,9 @@ CClientVehicle* CClientPed::GetRealOccupiedVehicle()
     return NULL;
 }
 
-CClientVehicle* CClientPed::GetClosestVehicleInRange(bool bGetPositionFromClosestDoor, bool bCheckDriverDoor, bool bCheckPassengerDoors,
-                                                     bool bCheckStreamedOutVehicles, unsigned int* uiClosestDoor, CVector* pClosestDoorPosition,
-                                                     float fWithinRange)
+CClientVehicle* CClientPed::GetClosestEnterableVehicle(bool bGetPositionFromClosestDoor, bool bCheckDriverDoor, bool bCheckPassengerDoors,
+                                                       bool bCheckStreamedOutVehicles, unsigned int* uiClosestDoor, CVector* pClosestDoorPosition,
+                                                       float fWithinRange, bool localVehicles)
 {
     if (bGetPositionFromClosestDoor)
     {
@@ -1144,13 +1179,17 @@ CClientVehicle* CClientPed::GetClosestVehicleInRange(bool bGetPositionFromCloses
     for (; iter != listEnd; iter++)
     {
         pTempVehicle = *iter;
+
+        if (pTempVehicle->IsLocalEntity() != localVehicles)
+            continue;
+
         CVehicle* pGameVehicle = pTempVehicle->GetGameVehicle();
 
         if (!pGameVehicle && bGetPositionFromClosestDoor)
             continue;
 
         // Should we take the position from the closest door instead of center of vehicle
-        if (bGetPositionFromClosestDoor && pTempVehicle->GetModel() != VT_RCBARON)
+        if (bGetPositionFromClosestDoor && static_cast<VehicleType>(pTempVehicle->GetModel()) != VehicleType::VT_RCBARON)
         {
             // Get the closest front-door
             CVector vecFrontPos;
@@ -1371,6 +1410,10 @@ void CClientPed::WarpIntoVehicle(CClientVehicle* pVehicle, unsigned int uiSeat)
         }
     }
 
+    // Wrong seat or undefined passengers count?
+    if ((uiSeat > 0 && uiSeat > pVehicle->m_ucMaxPassengers) || (uiSeat > 0 && pVehicle->m_ucMaxPassengers == 255))
+        return;
+
     // Transfer WaitingForGroundToLoad state to vehicle
     if (m_bIsLocalPlayer)
     {
@@ -1418,6 +1461,7 @@ void CClientPed::WarpIntoVehicle(CClientVehicle* pVehicle, unsigned int uiSeat)
         }
     }
 
+    CClientVehicle* pPrevVehicle = GetRealOccupiedVehicle();
     // Eventually remove us from a previous vehicle
     RemoveFromVehicle();
     // m_uiOccupyingSeat = uiSeat;
@@ -1455,7 +1499,7 @@ void CClientPed::WarpIntoVehicle(CClientVehicle* pVehicle, unsigned int uiSeat)
             }
 
             // Make sure our camera is fixed on the new vehicle
-            if (m_bIsLocalPlayer)
+            if (m_bIsLocalPlayer && pPrevVehicle && m_pManager->GetCamera()->GetTargetEntity() == pPrevVehicle)
                 m_pManager->GetCamera()->SetTargetEntity(pVehicle);
         }
 
@@ -1465,7 +1509,7 @@ void CClientPed::WarpIntoVehicle(CClientVehicle* pVehicle, unsigned int uiSeat)
     else
     {
         // Passenger seat
-        unsigned char ucSeat = CClientVehicleManager::ConvertIndexToGameSeat(pVehicle->m_usModel, uiSeat);
+        unsigned char ucSeat = CClientVehicleManager::ConvertIndexToGameSeat(pVehicle->m_usModel, static_cast<unsigned char>(uiSeat));
         if (ucSeat != 0 && ucSeat != 0xFF)
         {
             if (m_pPlayerPed)
@@ -1501,7 +1545,7 @@ void CClientPed::WarpIntoVehicle(CClientVehicle* pVehicle, unsigned int uiSeat)
                     }
 
                     // Make sure our camera is fixed on the new vehicle
-                    if (m_bIsLocalPlayer)
+                    if (m_bIsLocalPlayer && pPrevVehicle && m_pManager->GetCamera()->GetTargetEntity() == pPrevVehicle)
                         m_pManager->GetCamera()->SetTargetEntity(pVehicle);
                 }
             }
@@ -1581,7 +1625,8 @@ CClientVehicle* CClientPed::RemoveFromVehicle(bool bSkipWarpIfGettingOut)
             if (pVehicle != m_pOccupyingVehicle && pVehicle->GetOccupant())
             {
                 // Local player left vehicle or got abandoned by remote driver
-                if ((m_bIsLocalPlayer || (m_uiOccupiedVehicleSeat == 0 && (g_pClientGame->GetLocalPlayer() && g_pClientGame->GetLocalPlayer()->GetOccupiedVehicle() == pVehicle))))
+                if ((m_bIsLocalPlayer ||
+                     (m_uiOccupiedVehicleSeat == 0 && (g_pClientGame->GetLocalPlayer() && g_pClientGame->GetLocalPlayer()->GetOccupiedVehicle() == pVehicle))))
                 {
                     // Tell vehicle audio the driver left
                     pGameVehicle->GetVehicleAudioEntity()->JustGotOutOfVehicleAsDriver();
@@ -1674,14 +1719,12 @@ void CClientPed::SetUsesCollision(bool bUsesCollision)
 
 float CClientPed::GetMaxHealth()
 {
-    // TODO: Verify this formula
-
     // Grab his player health stat
     float fStat = GetStat(MAX_HEALTH);
 
     // Do a linear interpolation to get how much health this would allow
-    // Assumes: 100 health = 569 stat, 200 health = 1000 stat.
-    float fMaxHealth = 100.0f + (100.0f / 431.0f * (fStat - 569.0f));
+    // Assumes: 100 health = 569 stat, 176 health = 1000 stat.
+    float fMaxHealth = fStat * 0.176f;
 
     // Return the max health. Make sure it can't be below 1
     if (fMaxHealth < 1.0f)
@@ -1736,6 +1779,11 @@ void CClientPed::InternalSetHealth(float fHealth)
             }
             else
             {
+                // Ped is alive again (Fix #414)
+                UnlockHealth();
+                UnlockArmor();
+                SetIsDead(false);
+
                 // Recreate the player
                 ReCreateModel();
             }
@@ -1756,29 +1804,28 @@ void CClientPed::InternalSetHealth(float fHealth)
     }
 }
 
-float CClientPed::GetArmor()
+float CClientPed::GetArmor() const noexcept
 {
-    if (m_bArmorLocked)
-        return m_fArmor;
+    if (m_armorLocked)
+        return m_armor;
 
     if (m_pPlayerPed)
-    {
         return m_pPlayerPed->GetArmor();
-    }
-    return m_fArmor;
+
+    return m_armor;
 }
 
-void CClientPed::SetArmor(float fArmor)
+void CClientPed::SetArmor(float armor) noexcept
 {
-    // If our armor is locked, dont allow any change
-    if (m_bArmorLocked)
+    if (m_armorLocked)
         return;
 
+    armor = std::clamp(armor, 0.0f, 100.0f);
+
     if (m_pPlayerPed)
-    {
-        m_pPlayerPed->SetArmor(fArmor);
-    }
-    m_fArmor = fArmor;
+        m_pPlayerPed->SetArmor(armor);
+
+    m_armor = armor;
 }
 
 void CClientPed::LockHealth(float fHealth)
@@ -1787,10 +1834,10 @@ void CClientPed::LockHealth(float fHealth)
     m_fHealth = fHealth;
 }
 
-void CClientPed::LockArmor(float fArmor)
+void CClientPed::LockArmor(float armor) noexcept
 {
-    m_bArmorLocked = true;
-    m_fArmor = fArmor;
+    m_armorLocked = true;
+    m_armor = armor;
 }
 
 float CClientPed::GetOxygenLevel()
@@ -1965,14 +2012,8 @@ void CClientPed::SetFrozen(bool bFrozen)
                     m_pTaskManager->RemoveTask(TASK_PRIORITY_PHYSICAL_RESPONSE);
             }
 
-            if (m_pPlayerPed)
-            {
-                m_pPlayerPed->GetMatrix(&m_matFrozen);
-            }
-            else
-            {
-                m_matFrozen = m_Matrix;
-            }
+            // Always use the client's cached matrix, it's already updated by SetCurrentRotation
+            m_matFrozen = m_Matrix;
         }
     }
 }
@@ -2028,10 +2069,6 @@ void CClientPed::SetFrozenWaitingForGroundToLoad(bool bFrozen)
 
 CWeapon* CClientPed::GiveWeapon(eWeaponType weaponType, unsigned int uiAmmo, bool bSetAsCurrent)
 {
-    // Multiply ammo with 10 if flamethrower to get the numbers correct.
-    if (weaponType == WEAPONTYPE_FLAMETHROWER)
-        uiAmmo *= 10;
-
     CWeapon* pWeapon = NULL;
     if (m_pPlayerPed)
     {
@@ -2383,43 +2420,58 @@ eMovementState CClientPed::GetMovementState()
         const char* szComplexTaskName = GetTaskManager()->GetActiveTask()->GetTaskName();
         const char* szSimpleTaskName = GetTaskManager()->GetSimplestActiveTask()->GetTaskName();
 
-        // Is he climbing?
-        if (strcmp(szSimpleTaskName, "TASK_SIMPLE_CLIMB") == 0)
+        // Check tasks
+        if (strcmp(szSimpleTaskName, "TASK_SIMPLE_CLIMB") == 0) // Is he climbing?
+        {
+            CTaskSimpleClimb* climbingTask = dynamic_cast<CTaskSimpleClimb*>(GetTaskManager()->GetSimplestActiveTask());
+            if (climbingTask && climbingTask->GetHeightForPos() == eClimbHeights::CLIMB_GRAB)
+                return MOVEMENTSTATE_HANGING;
+
             return MOVEMENTSTATE_CLIMB;
-
-        // Is he jumping?
-        else if (strcmp(szComplexTaskName, "TASK_COMPLEX_JUMP") == 0)
+        }
+        else if (strcmp(szComplexTaskName, "TASK_COMPLEX_JUMP") == 0) // Is he jumping?
             return MOVEMENTSTATE_JUMP;
+        else if (strcmp(szSimpleTaskName, "TASK_SIMPLE_GO_TO_POINT") == 0) // Entering vehicle (walking to the doors)?
+            return MOVEMENTSTATE_WALK_TO_POINT;
+        else if (strcmp(szSimpleTaskName, "TASK_SIMPLE_SWIM") == 0) // Is he swimming?
+            return MOVEMENTSTATE_SWIM;
+        else if (strcmp(szSimpleTaskName, "TASK_SIMPLE_JETPACK") == 0) // Is he flying?
+        {
+            if (cs.ButtonCross != 0)
+                return MOVEMENTSTATE_ASCENT_JETPACK;
+            else if (cs.ButtonSquare != 0)
+                return MOVEMENTSTATE_DESCENT_JETPACK;
+            else
+                return MOVEMENTSTATE_JETPACK;
+        }
 
-        // Is he falling?
-        else if (!IsOnGround() && !GetContactEntity())
+        // Check movement state
+        if (!IsOnGround() && !GetContactEntity() && !m_pPlayerPed->IsStandingOnEntity() && !m_pPlayerPed->IsInWater() && (strcmp(szSimpleTaskName, "TASK_SIMPLE_IN_AIR") == 0 || strcmp(szSimpleTaskName, "TASK_SIMPLE_FALL") == 0)) // Is he falling?
             return MOVEMENTSTATE_FALL;
 
-        // Grab his controller state
-        bool bWalkKey = false;
-        if (GetType() == CCLIENTPLAYER)
-            bWalkKey = CClientPad::GetControlState("walk", cs, true);
-        else
-            m_Pad.GetControlState("walk", bWalkKey);
+        // Sometimes it returns 'fall' or 'walk', so it's better to return false instead
+        if (IsEnteringVehicle() || IsLeavingVehicle())
+            return MOVEMENTSTATE_UNKNOWN;
 
-        // Is he standing up?
         if (!IsDucked())
         {
-            unsigned int iRunState = m_pPlayerPed->GetRunState();
+            bool walking = false;
+            if (GetType() == CCLIENTPLAYER)
+                walking = CClientPad::GetControlState("walk", cs, true);
+            else
+                m_Pad.GetControlState("walk", walking);
 
-            // Is he moving the contoller at all?
-            if (iRunState == 1 && cs.LeftStickX == 0 && cs.LeftStickY == 0)
-                return MOVEMENTSTATE_STAND;
-
-            // Is he either pressing the walk key, or has run state 1?
-            if (iRunState == 1 || bWalkKey && iRunState == 6)
-                return MOVEMENTSTATE_WALK;
-            else if (iRunState == 4)
-                return MOVEMENTSTATE_POWERWALK;
-            else if (iRunState == 6)
-                return MOVEMENTSTATE_JOG;
-            else if (iRunState == 7)
-                return MOVEMENTSTATE_SPRINT;
+            switch (m_pPlayerPed->GetMoveState())
+            {
+                case PedMoveState::PEDMOVE_STILL:
+                    return MOVEMENTSTATE_STAND;
+                case PedMoveState::PEDMOVE_WALK:
+                    return (cs.LeftStickX == 0 && cs.LeftStickY == 0) ? MOVEMENTSTATE_STAND : MOVEMENTSTATE_WALK;
+                case PedMoveState::PEDMOVE_SPRINT:
+                    return MOVEMENTSTATE_SPRINT;
+                case PedMoveState::PEDMOVE_RUN:
+                    return walking ? MOVEMENTSTATE_WALK : MOVEMENTSTATE_JOG; // FileEX: It should be MOVEMENTSTATE_RUN, but we're keeping JOG for backward compatibility (PEDMOVE_JOG is unused in SA)
+            }
         }
         else
         {
@@ -2427,9 +2479,10 @@ eMovementState CClientPed::GetMovementState()
             if (cs.LeftStickX == 0 && cs.LeftStickY == 0)
                 return MOVEMENTSTATE_CROUCH;
             else
-                return MOVEMENTSTATE_CRAWL;
+                return (cs.LeftStickX != 0 && cs.RightShoulder1 != 0) ? MOVEMENTSTATE_ROLL : MOVEMENTSTATE_CRAWL;
         }
     }
+
     return MOVEMENTSTATE_UNKNOWN;
 }
 
@@ -2582,7 +2635,8 @@ void CClientPed::SetAim(float fArmDirectionX, float fArmDirectionY, eVehicleAimD
     }
 }
 
-void CClientPed::SetAimInterpolated(unsigned long ulDelay, float fArmDirectionX, float fArmDirectionY, bool bAkimboAimUp, eVehicleAimDirection cInVehicleAimAnim)
+void CClientPed::SetAimInterpolated(unsigned long ulDelay, float fArmDirectionX, float fArmDirectionY, bool bAkimboAimUp,
+                                    eVehicleAimDirection cInVehicleAimAnim)
 {
     if (!m_bIsLocalPlayer)
     {
@@ -2601,8 +2655,8 @@ void CClientPed::SetAimInterpolated(unsigned long ulDelay, float fArmDirectionX,
     }
 }
 
-void CClientPed::SetAimingData(unsigned long ulDelay, const CVector& vecTargetPosition, float fArmDirectionX, float fArmDirectionY, eVehicleAimDirection cInVehicleAimAnim,
-                               CVector* pSource, bool bInterpolateAim)
+void CClientPed::SetAimingData(unsigned long ulDelay, const CVector& vecTargetPosition, float fArmDirectionX, float fArmDirectionY,
+                               eVehicleAimDirection cInVehicleAimAnim, CVector* pSource, bool bInterpolateAim)
 {
     if (!m_bIsLocalPlayer)
     {
@@ -2652,9 +2706,6 @@ void CClientPed::WorldIgnore(bool bIgnore)
 
 void CClientPed::StreamedInPulse(bool bDoStandardPulses)
 {
-    if (!m_pPlayerPed)
-        return;
-
     // ControllerState checks and fixes are done at the same same as everything else unless using alt pulse order
     bool bDoControllerStateFixPulse = g_pClientGame->IsUsingAlternatePulseOrder() ? !bDoStandardPulses : bDoStandardPulses;
 
@@ -2677,12 +2728,20 @@ void CClientPed::StreamedInPulse(bool bDoStandardPulses)
         return;
     }
 
+    // Re-create ped
+    if (m_shouldRecreate)
+        ReCreateGameEntity();
+
     // Grab some vars here, saves getting them twice
     CClientVehicle* pVehicle = GetOccupiedVehicle();
 
     // Do we have a player? (streamed in)
     if (m_pPlayerPed)
     {
+        // If it's local entity, update in/out vehicle state
+        if (IsLocalEntity())
+            UpdateVehicleInOut();
+
         // Handle waiting for the ground to load
         if (IsFrozenWaitingForGroundToLoad())
             HandleWaitingForGroundToLoad();
@@ -2723,7 +2782,7 @@ void CClientPed::StreamedInPulse(bool bDoStandardPulses)
         {
             CVector vecTemp;
             m_pPlayerPed->SetMatrix(&m_matFrozen);
-            m_pPlayerPed->SetMoveSpeed(&vecTemp);
+            m_pPlayerPed->SetMoveSpeed(vecTemp);
         }
 
         // Is our health locked?
@@ -2733,9 +2792,9 @@ void CClientPed::StreamedInPulse(bool bDoStandardPulses)
         }
 
         // Is our armor locked?
-        if (m_bArmorLocked)
+        if (m_armorLocked)
         {
-            m_pPlayerPed->SetArmor(m_fArmor);
+            m_pPlayerPed->SetArmor(m_armor);
         }
 
         // In a vehicle?
@@ -2846,13 +2905,14 @@ void CClientPed::StreamedInPulse(bool bDoStandardPulses)
 
                 m_bRequestedAnimation = false;
 
-                // Copy our name incase it gets deleted
-                SString strAnimName = m_AnimationCache.strName;
-                // Run our animation
-                RunNamedAnimation(m_pAnimationBlock, strAnimName, m_AnimationCache.iTime, m_AnimationCache.iBlend, m_AnimationCache.bLoop, m_AnimationCache.bUpdatePosition,
-                    m_AnimationCache.bInterruptable, m_AnimationCache.bFreezeLastFrame);
+                RunAnimationFromCache();
             }
         }
+
+        // Are we need to update anim speed & progress?
+        // We need to do it here because the anim starts on the next frame after calling RunNamedAnimation
+        if (m_pAnimationBlock && m_AnimationCache.progressWaitForStreamIn && IsAnimationInProgress())
+            UpdateAnimationProgressAndSpeed();
 
         // Update our alpha
         unsigned char ucAlpha = m_ucAlpha;
@@ -2938,7 +2998,7 @@ void CClientPed::ApplyControllerStateFixes(CControllerState& Current)
             // Check we're not doing any important animations
             eAnimID animId = pAssoc->GetAnimID();
             if (animId == eAnimID::ANIM_ID_WALK || animId == eAnimID::ANIM_ID_RUN || animId == eAnimID::ANIM_ID_IDLE ||
-                animId == eAnimID::ANIM_ID_WEAPON_CROUCH || animId == eAnimID::ANIM_ID_STEALTH_AIM)
+                animId == eAnimID::ANIM_ID_WEAPON_CROUCH || animId == eAnimID::ANIM_ID_KILL_PARTIAL)
             {
                 // Are our knife anims loaded?
                 std::unique_ptr<CAnimBlock> pBlock = g_pGame->GetAnimManager()->GetAnimationBlock("KNIFE");
@@ -3046,7 +3106,7 @@ void CClientPed::ApplyControllerStateFixes(CControllerState& Current)
     }
 
     // If we started crouching less than some time ago, make sure we can't jump or sprint.
-    // This fixes the exploit both locally and remotly that enables players to abort
+    // This fixes the exploit both locally and remotely that enables players to abort
     // the crouching animation and shoot quickly with slow shooting weapons. Also fixes
     // the exploit making you able to get crouched without being able to move and shoot
     // with infinite ammo for remote players.
@@ -3119,7 +3179,7 @@ void CClientPed::ApplyControllerStateFixes(CControllerState& Current)
         {
             // Don't allow the aiming key (RightShoulder1)
             // This fixes bug allowing you to run around in aim mode while
-            // entering a vehicle both locally and remotly.
+            // entering a vehicle both locally and remotely.
             Current.RightShoulder1 = 0;
         }
     }
@@ -3257,61 +3317,16 @@ void CClientPed::ApplyControllerStateFixes(CControllerState& Current)
             }
         }
     }
-
-    // Fix for stuck aim+move when FPS is greater than 45. This hack will raise the limit to 70 FPS
-    // Fix works by applying a small input pulse on the other axis, at the start of movement
-    pTask = m_pTaskManager->GetTaskSecondary(TASK_SECONDARY_ATTACK);
-    if (pTask && pTask->GetTaskType() == TASK_SIMPLE_USE_GUN)
-    {
-        // Make sure not crouching
-        pTask = m_pTaskManager->GetTaskSecondary(TASK_SECONDARY_DUCK);
-        if (!pTask || pTask->GetTaskType() != TASK_SIMPLE_DUCK)
-        {
-            eWeaponType  eWeapon = GetCurrentWeaponType();
-            float        fSkill = GetStat(g_pGame->GetStats()->GetSkillStatIndex(eWeapon));
-            CWeaponStat* pWeaponStat = g_pGame->GetWeaponStatManager()->GetWeaponStatsFromSkillLevel(eWeapon, fSkill);
-            // Apply fix for aimable weapons only
-            if (pWeaponStat && pWeaponStat->IsFlagSet(WEAPONTYPE_CANAIMWITHARM) == false)
-            {
-                // See which way input wants to go
-                const bool bInputRight = Current.LeftStickX > 6;
-                const bool bInputLeft = Current.LeftStickX < -6;
-                const bool bInputFwd = Current.LeftStickY < -6;
-                const bool bInputBack = Current.LeftStickY > 6;
-
-                // See which way ped is currently going
-                CVector vecVelocity, vecRotationRadians;
-                GetMoveSpeed(vecVelocity);
-                GetRotationRadians(vecRotationRadians);
-                RotateVector(vecVelocity, -vecRotationRadians);
-
-                // Calc how much to pulse other axis
-                short sFixY = 0;
-                short sFixX = 0;
-
-                if (bInputRight && vecVelocity.fX >= 0.f)
-                    sFixY = static_cast<short>(UnlerpClamped(0.02f, vecVelocity.fX, 0.f) * 64);
-                else if (bInputLeft && vecVelocity.fX <= 0.f)
-                    sFixY = static_cast<short>(UnlerpClamped(-0.02f, vecVelocity.fX, 0.f) * -64);
-
-                if (bInputFwd && vecVelocity.fY >= 0.f)
-                    sFixX = static_cast<short>(UnlerpClamped(0.02f, vecVelocity.fY, 0.f) * 64);
-                else if (bInputBack && vecVelocity.fY <= 0.f)
-                    sFixX = static_cast<short>(UnlerpClamped(-0.02f, vecVelocity.fY, 0.f) * -64);
-
-                // Apply pulse if bigger than existing input value
-                if (abs(sFixY) > abs(Current.LeftStickY))
-                    Current.LeftStickY = sFixY;
-
-                if (abs(sFixX) > abs(Current.LeftStickX))
-                    Current.LeftStickX = sFixX;
-            }
-        }
-    }
 }
 
 float CClientPed::GetCurrentRotation()
 {
+    if (IsFrozen())
+    {
+        CVector vecRotation = m_matFrozen.GetRotation();
+        return vecRotation.fZ;
+    }
+    
     if (m_pPlayerPed)
     {
         return m_pPlayerPed->GetCurrentRotation();
@@ -3338,6 +3353,11 @@ void CClientPed::SetCurrentRotation(float fRotation, bool bIncludeTarget)
         if (bIncludeTarget)
             m_fTargetRotation = fRotation;
     }
+
+    // Always update m_Matrix rotation so m_matFrozen gets correct value in SetFrozen
+    CVector vecRotation = m_Matrix.GetRotation();
+    vecRotation.fZ = fRotation;
+    m_Matrix.SetRotation(vecRotation);
 }
 
 void CClientPed::SetTargetRotation(float fRotation)
@@ -3350,18 +3370,25 @@ void CClientPed::SetTargetRotation(float fRotation)
     SetCurrentRotation(fRotation);
 }
 
-void CClientPed::SetTargetRotation(unsigned long ulDelay, float fRotation, float fCameraRotation)
+void CClientPed::SetTargetRotation(unsigned long ulDelay, std::optional<float> rotation, std::optional<float> cameraRotation)
 {
     m_ulBeginRotationTime = CClientTime::GetTime();
     m_ulEndRotationTime = m_ulBeginRotationTime + ulDelay;
-    m_fBeginRotation = (m_pPlayerPed) ? m_pPlayerPed->GetTargetRotation() : m_fCurrentRotation;
-    m_fTargetRotationA = fRotation;
-    m_fBeginCameraRotation = GetCameraRotation();
-    m_fTargetCameraRotation = fCameraRotation;
+    if (rotation.has_value())
+    {
+        m_fBeginRotation = (m_pPlayerPed) ? m_pPlayerPed->GetCurrentRotation() : m_fCurrentRotation;
+        m_fTargetRotationA = rotation.value();
+    }
+    if (cameraRotation.has_value())
+    {
+        m_fBeginCameraRotation = GetCameraRotation();
+        m_fTargetCameraRotation = cameraRotation.value();
+    }
 }
 
 // Temporary
 #include "../mods/deathmatch/logic/CClientGame.h"
+#include <enums/VehicleType.h>
 extern CClientGame* g_pClientGame;
 
 void CClientPed::Interpolate()
@@ -3413,22 +3440,23 @@ void CClientPed::Interpolate()
             // We're not at the end?
             if (ulCurrentTime < m_ulEndRotationTime)
             {
-                // Interpolate the player rotation
-                float fDeltaTime = float(m_ulEndRotationTime - m_ulBeginRotationTime);
-                float fDelta = GetOffsetDegrees(m_fBeginRotation, m_fTargetRotationA);
-                float fCameraDelta = GetOffsetDegrees(m_fBeginCameraRotation, m_fTargetCameraRotation);
-                float fProgress = float(ulCurrentTime - m_ulBeginRotationTime);
-                float fNewRotation = m_fBeginRotation + (fDelta / fDeltaTime * fProgress);
-                float fNewCameraRotation = m_fBeginCameraRotation + (fCameraDelta / fDeltaTime * fProgress);
+                const float fDelta = GetOffsetRadians(m_fBeginRotation, m_fTargetRotationA);
 
                 // Hack for the wrap-around (the edge seems to be varying...)
-                if (fDelta < -5.0f || fDelta > 5.0f)
+                if (fDelta < -M_PI || fDelta > M_PI)
                 {
                     SetCurrentRotation(m_fTargetRotationA);
                     SetCameraRotation(m_fTargetCameraRotation);
                 }
                 else
                 {
+                    // Interpolate the player rotation
+                    const float fDeltaTime = float(m_ulEndRotationTime - m_ulBeginRotationTime);
+                    const float fCameraDelta = GetOffsetRadians(m_fBeginCameraRotation, m_fTargetCameraRotation);
+                    const float fProgress = float(ulCurrentTime - m_ulBeginRotationTime);
+                    const float fNewRotation = m_fBeginRotation + fDelta * (fProgress / fDeltaTime);
+                    const float fNewCameraRotation = m_fBeginCameraRotation + fCameraDelta * (fProgress / fDeltaTime);
+
                     SetCurrentRotation(fNewRotation);
                     SetCameraRotation(fNewCameraRotation);
                 }
@@ -3599,7 +3627,7 @@ void CClientPed::_CreateModel()
     m_pLoadedModelInfo->ModelAddRef(BLOCKING, "CClientPed::_CreateModel");
 
     // Create the new ped
-    m_pPlayerPed = dynamic_cast<CPlayerPed*>(g_pGame->GetPools()->AddPed(this, static_cast<ePedModel>(m_ulModel)));
+    m_pPlayerPed = dynamic_cast<CPlayerPed*>(g_pGame->GetPools()->AddPed(this, m_ulModel));
     if (m_pPlayerPed)
     {
         // Put our pointer in the stored data and update the remote data with the new model pointer
@@ -3631,14 +3659,14 @@ void CClientPed::_CreateModel()
         m_pPlayerPed->SetMatrix(&m_Matrix);
         m_pPlayerPed->SetCurrentRotation(m_fCurrentRotation);
         m_pPlayerPed->SetTargetRotation(m_fTargetRotation);
-        m_pPlayerPed->SetMoveSpeed(&m_vecMoveSpeed);
+        m_pPlayerPed->SetMoveSpeed(m_vecMoveSpeed);
         m_pPlayerPed->SetTurnSpeed(&m_vecTurnSpeed);
         Duck(m_bDucked);
         SetWearingGoggles(m_bWearingGoggles);
         m_pPlayerPed->SetVisible(m_bVisible);
         m_pPlayerPed->SetUsesCollision(m_bUsesCollision);
         m_pPlayerPed->SetHealth(m_fHealth);
-        m_pPlayerPed->SetArmor(m_fArmor);
+        m_pPlayerPed->SetArmor(m_armor);
         m_pPlayerPed->SetLighting(m_fLighting);
         WorldIgnore(m_bWorldIgnored);
 
@@ -3669,6 +3697,7 @@ void CClientPed::_CreateModel()
         SetHeadless(m_bHeadless);
         SetOnFire(m_bIsOnFire);
         SetSpeechEnabled(m_bSpeechEnabled);
+        SetBleeding(m_bBleeding);
 
         // Rebuild the player if it's CJ. So we get the clothes.
         RebuildModel();
@@ -3686,18 +3715,15 @@ void CClientPed::_CreateModel()
             Kill(WEAPONTYPE_UNARMED, 0, false, true);
         }
 
-        // Are we still playing a looped animation?
-        if (m_AnimationCache.bLoop && m_pAnimationBlock)
+        // Are we still playing a animation?
+        if (m_pAnimationBlock && IsAnimationInProgress())
         {
             if (m_bisCurrentAnimationCustom)
             {
                 m_bisNextAnimationCustom = true;
             }
-            // Copy our anim name incase it gets deleted
-            SString strAnimName = m_AnimationCache.strName;
-            // Run our animation
-            RunNamedAnimation(m_pAnimationBlock, strAnimName, m_AnimationCache.iTime, m_AnimationCache.iBlend, m_AnimationCache.bLoop, m_AnimationCache.bUpdatePosition,
-                m_AnimationCache.bInterruptable, m_AnimationCache.bFreezeLastFrame);
+
+            RunAnimationFromCache();
         }
 
         // Set the voice that corresponds to our model
@@ -3895,6 +3921,10 @@ void CClientPed::_ChangeModel()
             SetStat(23, 0.0f);
         }
 
+        // Store attached satchels
+        std::vector<SSatchelsData> attachedSatchels;
+        m_pPlayerPed->GetAttachedSatchels(attachedSatchels);
+
         if (m_bIsLocalPlayer)
         {
             // TODO: Create a simple function to save and restore player states and use it
@@ -3945,21 +3975,6 @@ void CClientPed::_ChangeModel()
                 // So make sure clothes geometry is built now...
                 m_pClothes->AddAllToModel();
                 m_pPlayerPed->RebuildPlayer();
-
-                // ...and decrement the extra ref
-            #ifdef NO_CRASH_FIX_TEST2
-                m_pPlayerPed->RemoveGeometryRef();
-            #endif
-            }
-            else
-            {
-                // When the local player changes to another (non CJ) model, the geometry gets an extra ref from somewhere, causing a memory leak.
-                // So decrement the extra ref here
-            #ifdef NO_CRASH_FIX_TEST
-                m_pPlayerPed->RemoveGeometryRef();
-            #endif
-                // As we will have problem removing the geometry later, we might as well keep the model cached until exit
-                g_pCore->AddModelToPersistentCache((ushort)m_ulModel);
             }
 
             // Remove reference to the old model we used (Flag extra GTA reference to be removed as well)
@@ -3978,19 +3993,15 @@ void CClientPed::_ChangeModel()
             }
             m_bDontChangeRadio = false;
 
-            // Are we still playing a looped animation?
-            if (m_AnimationCache.bLoop && m_pAnimationBlock)
+            // Are we still playing a animation?
+            if (m_pAnimationBlock && IsAnimationInProgress())
             {
                 if (m_bisCurrentAnimationCustom)
                 {
                     m_bisNextAnimationCustom = true;
                 }
 
-                // Copy our anim name incase it gets deleted
-                SString strAnimName = m_AnimationCache.strName;
-                // Run our animation
-                RunNamedAnimation(m_pAnimationBlock, strAnimName, m_AnimationCache.iTime, m_AnimationCache.iBlend, m_AnimationCache.bLoop, m_AnimationCache.bUpdatePosition,
-                    m_AnimationCache.bInterruptable, m_AnimationCache.bFreezeLastFrame);
+                RunAnimationFromCache();
             }
 
             // Set the voice that corresponds to the new model
@@ -4002,11 +4013,20 @@ void CClientPed::_ChangeModel()
         {
             // ChrML: Changing the skin in certain cases causes player sliding. So we recreate instead.
 
-            // Kill the old player
-            _DestroyModel();
+            m_shouldRecreate = true;
+        }
 
-            // Create the new with the new skin
-            _CreateModel();
+        // ReAttach satchels
+        CClientProjectileManager* pProjectileManager = m_pManager->GetProjectileManager();
+
+        for (const SSatchelsData& satchelData : attachedSatchels)
+        {
+            CClientProjectile* pSatchel = pProjectileManager->Get((CEntitySAInterface*)satchelData.pProjectileInterface);
+            if (!pSatchel || pSatchel->IsBeingDeleted())
+                continue;
+
+            pSatchel->SetAttachedOffsets(*satchelData.vecAttachedOffsets, *satchelData.vecAttachedRotation);
+            pSatchel->InternalAttachTo(this);
         }
 
         g_pMultiplayer->SetAutomaticVehicleStartupOnPedEnter(true);
@@ -4027,11 +4047,7 @@ void CClientPed::ReCreateModel()
             m_pLoadedModelInfo->ModelAddRef(BLOCKING, "CClientPed::ReCreateModel");
         }
 
-        // Destroy the old model
-        _DestroyModel();
-
-        // Create the new model
-        _CreateModel();
+        m_shouldRecreate = true;
 
         // Remove the reference we temporarily added again
         if (bSameModel)
@@ -4041,8 +4057,29 @@ void CClientPed::ReCreateModel()
     }
 }
 
+void CClientPed::ReCreateGameEntity()
+{
+    if (!m_shouldRecreate || !m_pPlayerPed)
+        return;
+
+    // Destroy current game entity
+    _DestroyModel();
+
+    // Create the new game entity
+    _CreateModel();
+
+    m_shouldRecreate = false;
+}
+
 void CClientPed::ModelRequestCallback(CModelInfo* pModelInfo)
 {
+    // The model loading may take a while and there's a chance of ped being moved to other dimension.
+    if (!IsVisibleInAllDimensions() && GetDimension() != m_pStreamer->GetDimension())
+    {
+        NotifyUnableToCreate();
+        return;
+    }
+
     // If we have a player loaded
     if (m_pPlayerPed)
     {
@@ -4065,6 +4102,7 @@ void CClientPed::RebuildModel(bool bDelayChange)
         if (m_ulModel == 0)
         {
             // Adds only the neccesary textures
+            m_pClothes->RefreshClothes();
             m_pClothes->AddAllToModel();
 
             m_bPendingRebuildPlayer = true;
@@ -4238,10 +4276,10 @@ bool CClientPed::PerformChecks()
             // The player should not be able to gain any health/armor without us knowing..
             // meaning all health/armor giving must go through SetHealth/SetArmor.
             if ((m_fHealth > 0.0f && m_pPlayerPed->GetHealth() > m_fHealth + FLOAT_EPSILON) ||
-                (m_fArmor < 100.0f && m_pPlayerPed->GetArmor() > m_fArmor + FLOAT_EPSILON))
+                (m_armor < 100.0f && m_pPlayerPed->GetArmor() > m_armor + FLOAT_EPSILON))
             {
                 g_pCore->GetConsole()->Printf("healthCheck: %f %f", m_pPlayerPed->GetHealth(), m_fHealth);
-                g_pCore->GetConsole()->Printf("armorCheck: %f %f", m_pPlayerPed->GetArmor(), m_fArmor);
+                g_pCore->GetConsole()->Printf("armorCheck: %f %f", m_pPlayerPed->GetArmor(), m_armor);
                 return false;
             }
             // Perform the checks in CGame
@@ -4457,9 +4495,9 @@ void CClientPed::_GetIntoVehicle(CClientVehicle* pVehicle, unsigned int uiSeat, 
     CTask* pTask = 0;
     if (m_pTaskManager)
         pTask = m_pTaskManager->GetTask(TASK_PRIORITY_EVENT_RESPONSE_NONTEMP);
-    unsigned short usVehicleModel = pVehicle->GetModel();
+    auto usVehicleModel = static_cast<VehicleType>(pVehicle->GetModel());
     if (((pTask && pTask->GetTaskType() == TASK_COMPLEX_IN_WATER) || pVehicle->IsOnWater()) &&
-        (usVehicleModel == VT_SKIMMER || usVehicleModel == VT_SEASPAR || usVehicleModel == VT_LEVIATHN || usVehicleModel == VT_VORTEX))
+        (usVehicleModel == VehicleType::VT_SKIMMER || usVehicleModel == VehicleType::VT_SEASPAR || usVehicleModel == VehicleType::VT_LEVIATHN || usVehicleModel == VehicleType::VT_VORTEX))
     {
         CVector      vecDoorPos;
         unsigned int uiDoor;
@@ -4506,7 +4544,7 @@ void CClientPed::_GetIntoVehicle(CClientVehicle* pVehicle, unsigned int uiSeat, 
             }
         }
 
-        unsigned char ucSeat = CClientVehicleManager::ConvertIndexToGameSeat(pVehicle->m_usModel, uiSeat);
+        unsigned char ucSeat = CClientVehicleManager::ConvertIndexToGameSeat(pVehicle->m_usModel, static_cast<unsigned char>(uiSeat));
         if (ucSeat != 0 && ucSeat != 0xFF)
         {
             if (m_pPlayerPed)
@@ -4604,6 +4642,10 @@ bool CClientPed::HasJetPack()
         CTask* pPrimaryTask = m_pTaskManager->GetSimplestActiveTask();
         if (pPrimaryTask && pPrimaryTask->GetTaskType() == TASK_SIMPLE_JETPACK)
         {
+            auto* jetpackTask = dynamic_cast<CTaskSimpleJetPack*>(pPrimaryTask);
+            if (jetpackTask && jetpackTask->IsFinished())
+                return false;
+
             return true;
         }
         return false;
@@ -4637,12 +4679,20 @@ float CClientPed::GetDistanceFromGround()
     return (vecPosition.fZ - fGroundLevel);
 }
 
-bool CClientPed::IsOnGround()
+bool CClientPed::IsOnGround(bool checkVehicles)
 {
     CVector vecPosition;
     GetPosition(vecPosition);
     float fGroundLevel = static_cast<float>(g_pGame->GetWorld()->FindGroundZFor3DPosition(&vecPosition));
-    return (vecPosition.fZ > fGroundLevel && (vecPosition.fZ - fGroundLevel) <= 1.0f);
+
+    if (DefinitelyLessThan(vecPosition.fZ, fGroundLevel))
+        return false;
+
+    bool isOnGround = DefinitelyLessThan((vecPosition.fZ - fGroundLevel), 1.0f, 1e-4f) || EssentiallyEqual((vecPosition.fZ - fGroundLevel), 1.0f, 1e-4f);
+    if (!isOnGround && checkVehicles && m_pPlayerPed)
+        return m_pPlayerPed->IsStandingOnEntity();
+
+    return isOnGround;
 }
 
 bool CClientPed::IsClimbing()
@@ -5232,6 +5282,8 @@ void CClientPed::Respawn(CVector* pvecPosition, bool bRestoreState, bool bCamera
             float         fTargetRotation = m_pPlayerPed->GetTargetRotation();
             unsigned char ucInterior = GetInterior();
             unsigned char ucCameraInterior = static_cast<unsigned char>(g_pGame->GetWorld()->GetCurrentArea());
+            bool          bOldNightVision = g_pMultiplayer->IsNightVisionEnabled();
+            bool          bOldThermalVision = g_pMultiplayer->IsThermalVisionEnabled();
 
             // Don't allow any camera movement if we're in fixed mode
             if (m_pManager->GetCamera()->IsInFixedMode())
@@ -5241,6 +5293,9 @@ void CClientPed::Respawn(CVector* pvecPosition, bool bRestoreState, bool bCamera
             SetPosition(*pvecPosition);
 
             m_pPlayerPed->SetLanding(false);
+
+            // Set it to 0 (Fix #501)
+            SetCurrentWeaponSlot(eWeaponSlot::WEAPONSLOT_TYPE_UNARMED);
 
             if (bRestoreState)
             {
@@ -5257,6 +5312,10 @@ void CClientPed::Respawn(CVector* pvecPosition, bool bRestoreState, bool bCamera
             // Restore the camera's interior whether we're restoring player states or not
             g_pGame->GetWorld()->SetCurrentArea(ucCameraInterior);
 
+            // Reset goggle effect
+            g_pMultiplayer->SetNightVisionEnabled(bOldNightVision, false);
+            g_pMultiplayer->SetThermalVisionEnabled(bOldThermalVision, false);
+
             // Reattach us
             if (pAttachedTo && pAttachedTo->IsEntityAttached(this))
                 InternalAttachTo(pAttachedTo);
@@ -5269,6 +5328,14 @@ void CClientPed::Respawn(CVector* pvecPosition, bool bRestoreState, bool bCamera
             }
         }
     }
+}
+
+void CClientPed::Say(const ePedSpeechContext& speechId, float probability)
+{
+    if (!m_pPlayerPed)
+        return;
+
+    m_pPlayerPed->Say(speechId, probability);
 }
 
 const char* CClientPed::GetBodyPartName(unsigned char ucID)
@@ -5699,29 +5766,23 @@ bool CClientPed::IsRunningAnimation()
         }
         return false;
     }
-    return (m_AnimationCache.bLoop && m_pAnimationBlock);
+    return (m_AnimationCache.bLoop || m_AnimationCache.bFreezeLastFrame) && m_pAnimationBlock;
 }
 
-void CClientPed::RunAnimation(AssocGroupId animGroup, AnimationId animID)
+bool CClientPed::IsAnimationInProgress()
 {
-    KillAnimation();
+    bool constAnim = m_AnimationCache.bLoop || m_AnimationCache.bFreezeLastFrame;
 
-    if (m_pPlayerPed)
-    {
-        // Remove jetpack now so it doesn't stay on (#9522#c25612)
-        if (HasJetPack())
-            SetHasJetPack(false);
+    if (!m_pAnimationBlock)
+        return constAnim;
 
-        // Let's not choke them any longer
-        if (IsChoking())
-            SetChoking(false);
+    float elapsedTime = static_cast<float>(GetTimestamp() - m_AnimationCache.startTime) / 1000.0f;
 
-        CTask* pTask = g_pGame->GetTasks()->CreateTaskSimpleRunAnim(animGroup, animID, 4.0f, TASK_SIMPLE_ANIM, "TASK_SIMPLE_ANIM");
-        if (pTask)
-        {
-            pTask->SetAsPedTask(m_pPlayerPed, TASK_PRIORITY_PRIMARY);
-        }
-    }
+    auto animBlendHierarchy = g_pGame->GetAnimManager()->GetAnimation(m_AnimationCache.strName.c_str(), m_pAnimationBlock);
+    if (!animBlendHierarchy)
+        return constAnim;
+
+    return constAnim || elapsedTime < animBlendHierarchy->GetTotalTime();
 }
 
 void CClientPed::RunNamedAnimation(std::unique_ptr<CAnimBlock>& pBlock, const char* szAnimName, int iTime, int iBlend, bool bLoop, bool bUpdatePosition,
@@ -5842,6 +5903,52 @@ std::unique_ptr<CAnimBlock> CClientPed::GetAnimationBlock()
     return nullptr;
 }
 
+void CClientPed::RunAnimationFromCache()
+{
+    if (!m_pAnimationBlock)
+        return;
+
+    // Copy our name incase it gets deleted
+    std::string animName = m_AnimationCache.strName;
+
+    // Run our animation
+    RunNamedAnimation(m_pAnimationBlock, animName.c_str(), m_AnimationCache.iTime, m_AnimationCache.iBlend, m_AnimationCache.bLoop, m_AnimationCache.bUpdatePosition, m_AnimationCache.bInterruptable, m_AnimationCache.bFreezeLastFrame);
+
+    // Set anim progress & speed
+    m_AnimationCache.progressWaitForStreamIn = true;
+}
+
+void CClientPed::UpdateAnimationProgressAndSpeed()
+{
+    if (!m_AnimationCache.progressWaitForStreamIn)
+        return;
+
+    // Get current anim
+    auto animAssoc = g_pGame->GetAnimManager()->RpAnimBlendClumpGetAssociation(GetClump(), m_AnimationCache.strName.c_str());
+    if (!animAssoc)
+        return;
+
+    float animLength = animAssoc->GetLength();
+    float progress = 0.0f;
+    float elapsedTime = static_cast<float>(GetTimestamp() - m_AnimationCache.startTime) / 1000.0f;
+
+    if (m_AnimationCache.bFreezeLastFrame) // time and loop is ignored if freezeLastFrame is true
+        progress = (elapsedTime / animLength) * m_AnimationCache.speed;
+    else
+    {
+        if (m_AnimationCache.bLoop)
+            progress = std::fmod(elapsedTime * m_AnimationCache.speed, animLength) / animLength;
+        else
+            // For non-looped animations, limit duration to animLength if time exceeds it
+            progress = (elapsedTime / (m_AnimationCache.iTime <= animLength ? m_AnimationCache.iTime : animLength)) * m_AnimationCache.speed;
+    }
+
+    animAssoc->SetCurrentProgress(std::clamp(progress, 0.0f, 1.0f));
+    animAssoc->SetCurrentSpeed(m_AnimationCache.speed);
+
+    m_AnimationCache.progressWaitForStreamIn = false;
+}
+
 void CClientPed::PostWeaponFire()
 {
     m_ulLastTimeFired = CClientTime::GetTime();
@@ -5921,22 +6028,22 @@ bool CClientPed::IsFootBloodEnabled()
     return false;
 }
 
-bool CClientPed::IsOnFire()
+void CClientPed::SetBleeding(bool bBleeding)
 {
     if (m_pPlayerPed)
     {
-        return m_pPlayerPed->IsOnFire();
+        m_pPlayerPed->SetBleeding(bBleeding);
     }
-    return m_bIsOnFire;
+    m_bBleeding = bBleeding;
 }
 
-void CClientPed::SetOnFire(bool bIsOnFire)
+bool CClientPed::SetOnFire(bool bIsOnFire)
 {
     if (m_pPlayerPed)
-    {
-        m_pPlayerPed->SetOnFire(bIsOnFire);
-    }
+        return m_pPlayerPed->SetOnFire(bIsOnFire);
+
     m_bIsOnFire = bIsOnFire;
+    return true;
 }
 
 void CClientPed::GetVoice(short* psVoiceType, short* psVoiceID)
@@ -5963,6 +6070,12 @@ void CClientPed::SetVoice(const char* szVoiceType, const char* szVoice)
         m_pPlayerPed->SetVoice(szVoiceType, szVoice);
 }
 
+void CClientPed::ResetVoice()
+{
+    if (m_pPlayerPed)
+        m_pPlayerPed->ResetVoice();
+}
+
 bool CClientPed::IsSpeechEnabled()
 {
     if (m_pPlayerPed)
@@ -5984,51 +6097,57 @@ void CClientPed::SetSpeechEnabled(bool bEnabled)
     m_bSpeechEnabled = bEnabled;
 }
 
-bool CClientPed::CanReloadWeapon()
+bool CClientPed::CanReloadWeapon() noexcept
 {
-    unsigned long    ulNow = CClientTime::GetTime();
-    CControllerState Current;
-    GetControllerState(Current);
-    int iWeaponType = GetWeapon()->GetType();
-    // Hes not Aiming, ducked or if he is ducked he is not currently moving and he hasn't moved while crouching in the last 300ms (sometimes the crouching move
-    // anim runs over and kills the reload animation)
-    if (Current.RightShoulder1 == false && (!IsDucked() || (Current.LeftStickX == 0 && Current.LeftStickY == 0)) &&
-        ulNow - m_ulLastTimeMovedWhileCrouched > 300)
-    {
-        // Ignore certain weapons (anything without clip ammo)
-        if (iWeaponType >= WEAPONTYPE_PISTOL && iWeaponType <= WEAPONTYPE_TEC9 && iWeaponType != WEAPONTYPE_SHOTGUN)
-        {
-            return true;
-        }
-    }
-    return false;
-}
+    const auto       time = CClientTime::GetTime();
+    CControllerState state;
+    GetControllerState(state);
 
-bool CClientPed::ReloadWeapon()
-{
-    if (m_pTaskManager)
-    {
-        CWeapon* pWeapon = GetWeapon();
-        CTask*   pTask = m_pTaskManager->GetTaskSecondary(TASK_SECONDARY_ATTACK);
+    const auto weapon = GetWeapon()->GetType();
 
-        // Check his control states for anything that can cancel the anim instantly and make sure he is not firing
-        if (CanReloadWeapon() && (!pTask || (pTask && pTask->GetTaskType() != TASK_SIMPLE_USE_GUN)))
-        {
-            // Play anim + reload
-            pWeapon->SetState(WEAPONSTATE_RELOADING);
-
-            return true;
-        }
-    }
-    return false;
-}
-
-bool CClientPed::IsReloadingWeapon()
-{
-    if (CWeapon* weapon = GetWeapon(); weapon != nullptr)
-        return weapon->GetState() == WEAPONSTATE_RELOADING;
-    else
+    if (state.RightShoulder1 || (IsDucked() && (state.LeftStickX != 0 || state.LeftStickY != 0)) || time - m_ulLastTimeMovedWhileCrouched <= 300)
         return false;
+
+    if (weapon < WEAPONTYPE_PISTOL || weapon > WEAPONTYPE_TEC9 || weapon == WEAPONTYPE_SHOTGUN)
+        return false;
+
+    return true;
+}
+
+bool CClientPed::ReloadWeapon() noexcept
+{
+    if (!m_pTaskManager)
+        return false;
+
+    auto* weapon = GetWeapon();
+    auto* task = m_pTaskManager->GetTaskSecondary(TASK_SECONDARY_ATTACK);
+
+    if (!CanReloadWeapon() || (task && task->GetTaskType() == TASK_SIMPLE_USE_GUN))
+        return false;
+
+    CLuaArguments args;
+    args.PushNumber(weapon->GetType());
+    args.PushNumber(weapon->GetAmmoInClip());
+    args.PushNumber(weapon->GetAmmoTotal());
+
+    bool result = false;
+
+    if (IS_PLAYER(this))
+        result = CallEvent("onClientPlayerWeaponReload", args, true);
+    else
+        result = CallEvent("onClientPedWeaponReload", args, true);
+
+    if (!result)
+        return false;
+
+    weapon->SetState(WEAPONSTATE_RELOADING);
+    return true;
+}
+
+bool CClientPed::IsReloadingWeapon() noexcept
+{
+    auto* weapon = GetWeapon();
+    return weapon && weapon->GetState() == WEAPONSTATE_RELOADING;
 }
 
 bool CClientPed::ShouldBeStealthAiming()
@@ -6047,7 +6166,7 @@ bool CClientPed::ShouldBeStealthAiming()
                 {
                     // We need to be either crouched, walking or standing
                     SBindableGTAControl* pWalkControl = pKeyBinds->GetBindableFromControl("walk");
-                    if (m_pPlayerPed->GetRunState() == 1 || m_pPlayerPed->GetRunState() == 4 || pWalkControl && pWalkControl->bState)
+                    if (m_pPlayerPed->GetMoveState() == PedMoveState::PEDMOVE_STILL || m_pPlayerPed->GetMoveState() == PedMoveState::PEDMOVE_WALK || pWalkControl && pWalkControl->bState)
                     {
                         // Do we have a target ped?
                         CClientPed* pTargetPed = GetTargetedPed();
@@ -6198,10 +6317,10 @@ void CClientPed::RestoreAllAnimations()
         auto pAnimAssociation = pAnimationManager->RpAnimBlendClumpGetFirstAssociation(pClump);
         while (pAnimAssociation)
         {
-            auto pAnimNextAssociation = pAnimationManager->RpAnimBlendGetNextAssociation(pAnimAssociation);
-            auto pAnimHierarchy = pAnimAssociation->GetAnimHierarchy();
-            eAnimGroup  iGroupID = pAnimAssociation->GetAnimGroup();
-            eAnimID iAnimID = pAnimAssociation->GetAnimID();
+            auto       pAnimNextAssociation = pAnimationManager->RpAnimBlendGetNextAssociation(pAnimAssociation);
+            auto       pAnimHierarchy = pAnimAssociation->GetAnimHierarchy();
+            eAnimGroup iGroupID = pAnimAssociation->GetAnimGroup();
+            eAnimID    iAnimID = pAnimAssociation->GetAnimID();
             if (pAnimHierarchy && iGroupID >= eAnimGroup::ANIM_GROUP_DEFAULT && iAnimID >= eAnimID::ANIM_ID_WALK)
             {
                 auto pAnimStaticAssociation = pAnimationManager->GetAnimStaticAssociation(iGroupID, iAnimID);
@@ -6305,9 +6424,9 @@ void CClientPed::HandleWaitingForGroundToLoad()
     {
         // If not near any MTA objects, then don't bother waiting
         SetFrozenWaitingForGroundToLoad(false);
-        #ifdef ASYNC_LOADING_DEBUG_OUTPUTA
+#ifdef ASYNC_LOADING_DEBUG_OUTPUTA
         OutputDebugLine("[AsyncLoading]   FreezeUntilCollisionLoaded - Early stop");
-        #endif
+#endif
         return;
     }
 
@@ -6328,29 +6447,29 @@ void CClientPed::HandleWaitingForGroundToLoad()
     bool                  bASync = g_pGame->IsASyncLoadingEnabled();
     bool                  bMTAObjLimit = pObjectManager->IsObjectLimitReached();
     bool                  bHasModel = GetModelInfo() != NULL;
-    #ifndef ASYNC_LOADING_DEBUG_OUTPUTA
+#ifndef ASYNC_LOADING_DEBUG_OUTPUTA
     bool bMTALoaded = pObjectManager->ObjectsAroundPointLoaded(vecPosition, fUseRadius, m_usDimension);
-    #else
+#else
     SString strAround;
     bool    bMTALoaded = pObjectManager->ObjectsAroundPointLoaded(vecPosition, fUseRadius, m_usDimension, &strAround);
-    #endif
+#endif
 
-    #ifdef ASYNC_LOADING_DEBUG_OUTPUTA
+#ifdef ASYNC_LOADING_DEBUG_OUTPUTA
     SString status = SString(
         "%2.2f,%2.2f,%2.2f  bASync:%d   bHasModel:%d   bMTALoaded:%d   bMTAObjLimit:%d   m_fGroundCheckTolerance:%2.2f   m_fObjectsAroundTolerance:%2.2f  "
         "fUseRadius:%2.1f",
         vecPosition.fX, vecPosition.fY, vecPosition.fZ, bASync, bHasModel, bMTALoaded, bMTAObjLimit, m_fGroundCheckTolerance, m_fObjectsAroundTolerance,
         fUseRadius);
-    #endif
+#endif
 
     // See if ground is ready
     if ((!bHasModel || !bMTALoaded) && m_fObjectsAroundTolerance < 1.f)
     {
         m_fGroundCheckTolerance = 0.f;
         m_fObjectsAroundTolerance = std::min(1.f, m_fObjectsAroundTolerance + 0.01f);
-        #ifdef ASYNC_LOADING_DEBUG_OUTPUTA
+#ifdef ASYNC_LOADING_DEBUG_OUTPUTA
         status += ("  FreezeUntilCollisionLoaded - wait");
-        #endif
+#endif
     }
     else
     {
@@ -6363,16 +6482,16 @@ void CClientPed::HandleWaitingForGroundToLoad()
         if (fUseDist > -0.2f && fUseDist < 1.5f)
             SetFrozenWaitingForGroundToLoad(false);
 
-        #ifdef ASYNC_LOADING_DEBUG_OUTPUTA
+#ifdef ASYNC_LOADING_DEBUG_OUTPUTA
         status += (SString("  GetDistanceFromGround:  fDist:%2.2f   fUseDist:%2.2f", fDist, fUseDist));
-        #endif
+#endif
 
         // Stop waiting after 3 frames, if the object limit has not been reached. (bASync should always be false here)
         if (m_fGroundCheckTolerance > 0.03f && !bMTAObjLimit && !bASync)
             SetFrozenWaitingForGroundToLoad(false);
     }
 
-    #ifdef ASYNC_LOADING_DEBUG_OUTPUTA
+#ifdef ASYNC_LOADING_DEBUG_OUTPUTA
     OutputDebugLine(SStringX("[AsyncLoading] ")++ status);
     g_pCore->GetGraphics()->DrawString(10, 220, -1, 1, status);
 
@@ -6380,7 +6499,7 @@ void CClientPed::HandleWaitingForGroundToLoad()
     strAround.Split("\n", lineList);
     for (unsigned int i = 0; i < lineList.size(); i++)
         g_pCore->GetGraphics()->DrawString(10, 230 + i * 10, -1, 1, lineList[i]);
-    #endif
+#endif
 }
 
 //
@@ -6414,20 +6533,7 @@ void CClientPed::UpdateStreamPosition(const CVector& vecInPosition)
 bool CClientPed::EnterVehicle(CClientVehicle* pVehicle, bool bPassenger)
 {
     // Are we local player or ped we are syncing
-    if (!IsSyncing() && !IsLocalPlayer())
-    {
-        return false;
-    }
-
-    // Are we a clientside ped
-    // TODO: Add support for clientside peds
-    if (IsLocalEntity())
-    {
-        return false;
-    }
-
-    // Check the server is compatible if we are a ped
-    if (!IsLocalPlayer() && !g_pNet->CanServerBitStream(eBitStreamVersion::PedEnterExit))
+    if (!IsSyncing() && !IsLocalPlayer() && !IsLocalEntity())
     {
         return false;
     }
@@ -6470,7 +6576,7 @@ bool CClientPed::EnterVehicle(CClientVehicle* pVehicle, bool bPassenger)
     if (!pVehicle)
     {
         // Find the closest vehicle and door
-        CClientVehicle* pClosestVehicle = GetClosestVehicleInRange(true, !bPassenger, bPassenger, false, &uiDoor, nullptr, 20.0f);
+        CClientVehicle* pClosestVehicle = GetClosestEnterableVehicle(true, !bPassenger, bPassenger, false, &uiDoor, nullptr, 20.0f, IsLocalEntity());
         if (pClosestVehicle)
         {
             pVehicle = pClosestVehicle;
@@ -6492,16 +6598,16 @@ bool CClientPed::EnterVehicle(CClientVehicle* pVehicle, bool bPassenger)
         return false;
     }
 
-    if (!pVehicle->IsEnterable())
+    if (!pVehicle->IsEnterable(IsLocalEntity()))
     {
         // Stop if the vehicle is not enterable
         return false;
     }
 
     // Stop if the ped is swimming and the vehicle model cannot be entered from water (fixes #1990)
-    unsigned short vehicleModel = pVehicle->GetModel();
+    auto vehicleModel = static_cast<VehicleType>(pVehicle->GetModel());
 
-    if (IsInWater() && !(vehicleModel == VT_SKIMMER || vehicleModel == VT_SEASPAR || vehicleModel == VT_LEVIATHN || vehicleModel == VT_VORTEX))
+    if (IsInWater() && !(vehicleModel == VehicleType::VT_SKIMMER || vehicleModel == VehicleType::VT_SEASPAR || vehicleModel == VehicleType::VT_LEVIATHN || vehicleModel == VehicleType::VT_VORTEX))
     {
         return false;
     }
@@ -6509,11 +6615,12 @@ bool CClientPed::EnterVehicle(CClientVehicle* pVehicle, bool bPassenger)
     // If the Jump task is playing and we are in water - I know right
     // Kill the task.
     CTask* pTask = GetCurrentPrimaryTask();
-    if (pTask && pTask->GetTaskType() == TASK_COMPLEX_JUMP)  // Kill jump task - breaks warp in entry and doesn't really matter
+    if (pTask && pTask->GetTaskType() == TASK_COMPLEX_JUMP)            // Kill jump task - breaks warp in entry and doesn't really matter
     {
-        if (pVehicle->IsInWater() || IsInWater())            // Make sure we are about to warp in (this bug only happens when someone jumps into water with a vehicle)
+        if (pVehicle->IsInWater() ||
+            IsInWater())            // Make sure we are about to warp in (this bug only happens when someone jumps into water with a vehicle)
         {
-            KillTask(3, true);                               // Kill jump task if we are about to warp in
+            KillTask(3, true);            // Kill jump task if we are about to warp in
         }
     }
 
@@ -6553,6 +6660,10 @@ bool CClientPed::EnterVehicle(CClientVehicle* pVehicle, bool bPassenger)
         return false;
     }
 
+    // Validate camper seat to avoid multiple occupants && desyncronization
+    if (vehicleModel == VehicleType::VT_CAMPER && uiSeat > 0 && pVehicle->GetOccupant(uiSeat))
+        return false;
+
     // Call the onClientVehicleStartEnter event for the ped
     // Check if it is cancelled before sending packet
     CLuaArguments Arguments;
@@ -6566,6 +6677,32 @@ bool CClientPed::EnterVehicle(CClientVehicle* pVehicle, bool bPassenger)
         return false;
     }
 
+    if (IsLocalEntity())
+    {
+        // If vehicle is not local, we can't enter it
+        if (!pVehicle->IsLocalEntity())
+            return false;
+
+        // Set the vehicle id we're about to enter
+        m_VehicleInOutID = pVehicle->GetID();
+        m_ucVehicleInOutSeat = static_cast<unsigned char>(uiSeat);
+        m_bIsJackingVehicle = false;
+
+        // Make ped enter vehicle
+        GetIntoVehicle(pVehicle, uiSeat, static_cast<unsigned char>(uiDoor));
+
+        // Remember that this ped is working on entering a vehicle
+        SetVehicleInOutState(VEHICLE_INOUT_GETTING_IN);
+
+        pVehicle->CalcAndUpdateCanBeDamagedFlag();
+        pVehicle->CalcAndUpdateTyresCanBurstFlag();
+
+        m_bIsGettingIntoVehicle = true;
+        m_bIsGettingOutOfVehicle = false;
+
+        return true;
+    }
+
     // Send an in request
     NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
     if (!pBitStream)
@@ -6573,11 +6710,7 @@ bool CClientPed::EnterVehicle(CClientVehicle* pVehicle, bool bPassenger)
         return false;
     }
 
-    // Write the ped ID to it if server supports it
-    if (g_pNet->CanServerBitStream(eBitStreamVersion::PedEnterExit))
-    {
-        pBitStream->Write(GetID());
-    }
+    pBitStream->Write(GetID());
 
     // Write the vehicle id to it and that we're requesting to get into it
     pBitStream->Write(pVehicle->GetID());
@@ -6615,14 +6748,7 @@ bool CClientPed::EnterVehicle(CClientVehicle* pVehicle, bool bPassenger)
 bool CClientPed::ExitVehicle()
 {
     // Are we local player or ped we are syncing
-    if (!IsSyncing() && !IsLocalPlayer())
-    {
-        return false;
-    }
-
-    // Are we a clientside ped
-    // TODO: Add support for clientside peds
-    if (IsLocalEntity())
+    if (!IsSyncing() && !IsLocalPlayer() && !IsLocalEntity())
     {
         return false;
     }
@@ -6636,12 +6762,6 @@ bool CClientPed::ExitVehicle()
 
     // We dead?
     if (IsDead())
-    {
-        return false;
-    }
-
-    // Check the server is compatible if we are a ped
-    if (!IsLocalPlayer() && !g_pNet->CanServerBitStream(eBitStreamVersion::PedEnterExit))
     {
         return false;
     }
@@ -6667,6 +6787,38 @@ bool CClientPed::ExitVehicle()
         return false;
     }
 
+    const int rawDoor = g_pGame->GetCarEnterExit()->ComputeTargetDoorToExit(m_pPlayerPed, pOccupiedVehicle->GetGameVehicle());
+    auto      targetDoor = static_cast<std::int8_t>(rawDoor);
+
+    // If it's a local entity, we can just exit the vehicle
+    if (IsLocalEntity())
+    {
+        // Set the vehicle id and the seat we're about to exit from
+        m_VehicleInOutID = pOccupiedVehicle->GetID();
+        m_ucVehicleInOutSeat = static_cast<unsigned char>(GetOccupiedVehicleSeat());
+
+        // Call the onClientVehicleStartExit event for the ped
+        // Check if it is cancelled before making the ped exit the vehicle
+        CLuaArguments arguments;
+        arguments.PushElement(this);                    // player / ped
+        arguments.PushNumber(m_ucVehicleInOutSeat);     // seat
+        arguments.PushNumber(0);                        // door
+
+        if (!pOccupiedVehicle->CallEvent("onClientVehicleStartExit", arguments, true)) // Event has been cancelled
+            return false;
+
+        // Make ped exit vehicle
+        GetOutOfVehicle(m_ucVehicleInOutSeat);
+
+        // Remember that this ped is working on leaving a vehicle
+        SetVehicleInOutState(VEHICLE_INOUT_GETTING_OUT);
+
+        m_bIsGettingIntoVehicle = false;
+        m_bIsGettingOutOfVehicle = true;
+
+        return true;
+    }
+
     // We're about to exit a vehicle
     // Send an out request
     NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
@@ -6675,22 +6827,17 @@ bool CClientPed::ExitVehicle()
         return false;
     }
 
-    // Write the ped ID to it if server supports it
-    if (g_pNet->CanServerBitStream(eBitStreamVersion::PedEnterExit))
-    {
-        pBitStream->Write(GetID());
-    }
+    pBitStream->Write(GetID());
 
     // Write the vehicle id to it and that we're requesting to get out of it
     pBitStream->Write(pOccupiedVehicle->GetID());
     unsigned char ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_REQUEST_OUT);
     pBitStream->WriteBits(&ucAction, 4);
 
-    unsigned char ucDoor = g_pGame->GetCarEnterExit()->ComputeTargetDoorToExit(m_pPlayerPed, pOccupiedVehicle->GetGameVehicle());
-    if (ucDoor >= 2 && ucDoor <= 5)
+    if (targetDoor >= 2 && targetDoor <= 5)
     {
-        ucDoor -= 2;
-        pBitStream->WriteBits(&ucDoor, 2);
+        targetDoor -= 2;
+        pBitStream->WriteBits(&targetDoor, 2);
     }
 
     // Send and destroy it
@@ -6732,6 +6879,57 @@ void CClientPed::ResetVehicleInOut()
 //////////////////////////////////////////////////////////////////
 void CClientPed::UpdateVehicleInOut()
 {
+    if (IsLocalEntity())
+    {
+        // If getting inside vehicle
+        if (m_bIsGettingIntoVehicle)
+        {
+            CClientVehicle* vehicle = GetRealOccupiedVehicle();
+            if (!vehicle)
+                return;
+
+            // Call the onClientVehicleEnter event for the ped
+            // Check if it is cancelled before allowing the ped to enter the vehicle
+            CLuaArguments arguments;
+            arguments.PushElement(this);                    // player / ped
+            arguments.PushNumber(m_ucVehicleInOutSeat);     // seat
+
+            if (!vehicle->CallEvent("onClientVehicleEnter", arguments, true))
+            {
+                m_bIsGettingIntoVehicle = false;
+                RemoveFromVehicle();
+                return;
+            }
+
+            m_bIsGettingIntoVehicle = false;
+            m_VehicleInOutID = INVALID_ELEMENT_ID;
+            WarpIntoVehicle(vehicle, m_ucVehicleInOutSeat);
+            SetVehicleInOutState(VEHICLE_INOUT_NONE);
+        }
+        else if (m_bIsGettingOutOfVehicle)
+        {
+            // If getting out of vehicle
+            CClientVehicle* realVehicle = GetRealOccupiedVehicle();
+            CClientVehicle* networkVehicle = GetOccupiedVehicle();
+
+            if (realVehicle)
+                return;
+
+            // Call the onClientVehicleExit event for the ped
+            CLuaArguments arguments;
+            arguments.PushElement(this);                    // player / ped
+            arguments.PushNumber(m_ucVehicleInOutSeat);     // seat
+            networkVehicle->CallEvent("onClientVehicleExit", arguments, true);
+
+            m_bIsGettingOutOfVehicle = false;
+            m_VehicleInOutID = INVALID_ELEMENT_ID;
+            RemoveFromVehicle();
+            SetVehicleInOutState(VEHICLE_INOUT_NONE);
+        }
+
+        return;
+    }
+
     // We got told by the server to animate into a certain vehicle?
     if (m_VehicleInOutID != INVALID_ELEMENT_ID)
     {
@@ -6742,59 +6940,53 @@ void CClientPed::UpdateVehicleInOut()
         if (m_bIsGettingOutOfVehicle)
         {
             // If we aren't working on leaving the car (he's eiter finished or cancelled/failed leaving)
-            if (!IsLeavingVehicle())
+            if (IsLeavingVehicle())
+                return;
+
+            // Are we outside the car?
+            CClientVehicle* pVehicle = GetRealOccupiedVehicle();
+            if (pVehicle)
             {
-                // Are we outside the car?
-                CClientVehicle* pVehicle = GetRealOccupiedVehicle();
-                if (!pVehicle)
-                {
-                    // Tell the server that we successfully left the car
-                    NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
-                    if (pBitStream)
-                    {
-                        // Write the ped ID to it
-                        if (g_pNet->CanServerBitStream(eBitStreamVersion::PedEnterExit))
-                        {
-                            pBitStream->Write(GetID());
-                        }
+                // Warp us out now to keep in sync with the server
+                RemoveFromVehicle();
+                return;
+            }
+            // Tell the server that we successfully left the car
+            NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
+            if (pBitStream)
+            {
+                // Write the ped ID to it
+                pBitStream->Write(GetID());
 
-                        // Write the car id and the action id (enter complete)
-                        pBitStream->Write(m_VehicleInOutID);
-                        unsigned char ucAction = CClientGame::VEHICLE_NOTIFY_OUT;
-                        pBitStream->WriteBits(&ucAction, 4);
+                // Write the car id and the action id (enter complete)
+                pBitStream->Write(m_VehicleInOutID);
+                unsigned char ucAction = CClientGame::VEHICLE_NOTIFY_OUT;
+                pBitStream->WriteBits(&ucAction, 4);
 
-                        // Send it and destroy the packet
-                        g_pNet->SendPacket(PACKET_ID_VEHICLE_INOUT, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
-                        g_pNet->DeallocateNetBitStream(pBitStream);
-                    }
+                // Send it and destroy the packet
+                g_pNet->SendPacket(PACKET_ID_VEHICLE_INOUT, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
+                g_pNet->DeallocateNetBitStream(pBitStream);
+            }
 
-                    // Warp ourself out (so we're sure the records are correct)
-                    RemoveFromVehicle();
+            // Warp ourself out (so we're sure the records are correct)
+            RemoveFromVehicle();
 
-                    if (pInOutVehicle)
-                    {
-                        pInOutVehicle->CalcAndUpdateCanBeDamagedFlag();
-                        pInOutVehicle->CalcAndUpdateTyresCanBurstFlag();
-                    }
+            if (pInOutVehicle)
+            {
+                pInOutVehicle->CalcAndUpdateCanBeDamagedFlag();
+                pInOutVehicle->CalcAndUpdateTyresCanBurstFlag();
+            }
 
-                    // Reset the vehicle in out stuff so we're ready for another car entry/leave.
-                    // Don't allow a new entry/leave until we've gotten the notify return packet
-                    ElementID ReasonVehicleID = m_VehicleInOutID;
-                    ResetVehicleInOut();
-                    m_bNoNewVehicleTask = true;
-                    m_NoNewVehicleTaskReasonID = ReasonVehicleID;
+            // Reset the vehicle in out stuff so we're ready for another car entry/leave.
+            // Don't allow a new entry/leave until we've gotten the notify return packet
+            ElementID ReasonVehicleID = m_VehicleInOutID;
+            ResetVehicleInOut();
+            m_bNoNewVehicleTask = true;
+            m_NoNewVehicleTaskReasonID = ReasonVehicleID;
 
 #ifdef MTA_DEBUG
-                    g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_out");
+            g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_out");
 #endif
-                }
-                // Are we still inside the car?
-                else
-                {
-                    // Warp us out now to keep in sync with the server
-                    RemoveFromVehicle();
-                }
-            }
         }
 
         // Are we getting into a vehicle?
@@ -6802,144 +6994,138 @@ void CClientPed::UpdateVehicleInOut()
         {
             // If we aren't working on entering the car (he's either finished or cancelled)
             // Or we are dead (fix for #908) or we are in water (fix for #521)
-            if (!IsEnteringVehicle() || IsDead() || IsInWater())
+            if (IsEnteringVehicle() && !IsDead() && !IsInWater())
+                return;
+
+            // Is he in a vehicle now?
+            CClientVehicle* pVehicle = GetRealOccupiedVehicle();
+            if (pVehicle)
             {
-                // Is he in a vehicle now?
-                CClientVehicle* pVehicle = GetRealOccupiedVehicle();
-                if (pVehicle)
+                // Tell the server that we successfully entered the car
+                NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
+                if (pBitStream)
                 {
-                    // Tell the server that we successfully entered the car
-                    NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
-                    if (pBitStream)
+                    // Write the ped or player ID to it
+                    pBitStream->Write(GetID());
+
+                    // Write the car id and the action id (enter complete)
+                    pBitStream->Write(m_VehicleInOutID);
+                    unsigned char ucAction;
+
+                    if (m_bIsJackingVehicle)
                     {
-                        // Write the ped or player ID to it
-                        if (g_pNet->CanServerBitStream(eBitStreamVersion::PedEnterExit))
-                        {
-                            pBitStream->Write(GetID());
-                        }
-
-                        // Write the car id and the action id (enter complete)
-                        pBitStream->Write(m_VehicleInOutID);
-                        unsigned char ucAction;
-
-                        if (m_bIsJackingVehicle)
-                        {
-                            ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_JACK);
+                        ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_JACK);
 #ifdef MTA_DEBUG
-                            g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_jack");
+                        g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_jack");
 #endif
-                        }
-                        else
-                        {
-                            ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_IN);
+                    }
+                    else
+                    {
+                        ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_IN);
 #ifdef MTA_DEBUG
-                            g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_in");
+                        g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_in");
 #endif
-                        }
+                    }
+                    pBitStream->WriteBits(&ucAction, 4);
+
+                    // Send it and destroy the packet
+                    g_pNet->SendPacket(PACKET_ID_VEHICLE_INOUT, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
+                    g_pNet->DeallocateNetBitStream(pBitStream);
+                }
+
+                // Warp ourself in (so we're sure the records are correct)
+                pVehicle->AllowDoorRatioSetting(m_ucEnteringDoor, true);
+                WarpIntoVehicle(pVehicle, m_ucVehicleInOutSeat);
+
+                if (pInOutVehicle)
+                {
+                    pInOutVehicle->CalcAndUpdateCanBeDamagedFlag();
+                    pInOutVehicle->CalcAndUpdateTyresCanBurstFlag();
+                }
+            }
+            else
+            {
+                // Tell the server that we aborted entered the car
+                NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
+                if (pBitStream)
+                {
+                    // Write the ped or player ID to it
+                    pBitStream->Write(GetID());
+
+                    // Write the car id and the action id (enter complete)
+                    pBitStream->Write(m_VehicleInOutID);
+                    unsigned char ucAction;
+                    if (m_bIsJackingVehicle)
+                    {
+                        ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_JACK_ABORT);
                         pBitStream->WriteBits(&ucAction, 4);
 
-                        // Send it and destroy the packet
-                        g_pNet->SendPacket(PACKET_ID_VEHICLE_INOUT, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
-                        g_pNet->DeallocateNetBitStream(pBitStream);
-                    }
-
-                    // Warp ourself in (so we're sure the records are correct)
-                    pVehicle->AllowDoorRatioSetting(m_ucEnteringDoor, true);
-                    WarpIntoVehicle(pVehicle, m_ucVehicleInOutSeat);
-
-                    if (pInOutVehicle)
-                    {
-                        pInOutVehicle->CalcAndUpdateCanBeDamagedFlag();
-                        pInOutVehicle->CalcAndUpdateTyresCanBurstFlag();
-                    }
-                }
-                else
-                {
-                    // Tell the server that we aborted entered the car
-                    NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
-                    if (pBitStream)
-                    {
-                        // Write the ped or player ID to it
-                        if (g_pNet->CanServerBitStream(eBitStreamVersion::PedEnterExit))
+                        // Did we start jacking them?
+                        bool            bAlreadyStartedJacking = false;
+                        CClientVehicle* pVehicle = DynamicCast<CClientVehicle>(CElementIDs::GetElement(m_VehicleInOutID));
+                        if (pVehicle)
                         {
-                            pBitStream->Write(GetID());
-                        }
-
-                        // Write the car id and the action id (enter complete)
-                        pBitStream->Write(m_VehicleInOutID);
-                        unsigned char ucAction;
-                        if (m_bIsJackingVehicle)
-                        {
-                            ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_JACK_ABORT);
-                            pBitStream->WriteBits(&ucAction, 4);
-
-                            // Did we start jacking them?
-                            bool            bAlreadyStartedJacking = false;
-                            CClientVehicle* pVehicle = DynamicCast<CClientVehicle>(CElementIDs::GetElement(m_VehicleInOutID));
-                            if (pVehicle)
+                            CClientPed* pJackedPlayer = pVehicle->GetOccupant();
+                            if (pJackedPlayer)
                             {
-                                CClientPed* pJackedPlayer = pVehicle->GetOccupant();
-                                if (pJackedPlayer)
+                                // Jax: have we already started to jack the other player?
+                                if (pJackedPlayer->IsGettingJacked())
                                 {
-                                    // Jax: have we already started to jack the other player?
-                                    if (pJackedPlayer->IsGettingJacked())
-                                    {
-                                        bAlreadyStartedJacking = true;
-                                    }
+                                    bAlreadyStartedJacking = true;
                                 }
-                                unsigned char ucDoor = m_ucEnteringDoor - 2;
-                                pBitStream->WriteBits(&ucDoor, 3);
-                                SDoorOpenRatioSync door;
-                                door.data.fRatio = pVehicle->GetDoorOpenRatio(m_ucEnteringDoor);
-                                pBitStream->Write(&door);
                             }
-                            pBitStream->WriteBit(bAlreadyStartedJacking);
+                            unsigned char ucDoor = m_ucEnteringDoor - 2;
+                            pBitStream->WriteBits(&ucDoor, 3);
+                            SDoorOpenRatioSync door;
+                            door.data.fRatio = pVehicle->GetDoorOpenRatio(m_ucEnteringDoor);
+                            pBitStream->Write(&door);
+                        }
+                        pBitStream->WriteBit(bAlreadyStartedJacking);
 
 #ifdef MTA_DEBUG
-                            g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_jack_abort");
+                        g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_jack_abort");
 #endif
-                        }
-                        else
-                        {
-                            ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_IN_ABORT);
-                            pBitStream->WriteBits(&ucAction, 4);
-                            CClientVehicle* pVehicle = DynamicCast<CClientVehicle>(CElementIDs::GetElement(m_VehicleInOutID));
-                            if (pVehicle)
-                            {
-                                unsigned char ucDoor = m_ucEnteringDoor - 2;
-                                pBitStream->WriteBits(&ucDoor, 3);
-                                SDoorOpenRatioSync door;
-                                door.data.fRatio = pVehicle->GetDoorOpenRatio(m_ucEnteringDoor);
-                                pBitStream->Write(&door);
-                            }
-
-#ifdef MTA_DEBUG
-                            g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_in_abort");
-#endif
-                        }
-
-                        // Send it and destroy the packet
-                        g_pNet->SendPacket(PACKET_ID_VEHICLE_INOUT, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
-                        g_pNet->DeallocateNetBitStream(pBitStream);
                     }
-
-                    // Warp ourself out again (so we're sure the records are correct)
-                    RemoveFromVehicle();
-
-                    if (pInOutVehicle)
+                    else
                     {
-                        pInOutVehicle->CalcAndUpdateCanBeDamagedFlag();
-                        pInOutVehicle->CalcAndUpdateTyresCanBurstFlag();
+                        ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_IN_ABORT);
+                        pBitStream->WriteBits(&ucAction, 4);
+                        CClientVehicle* pVehicle = DynamicCast<CClientVehicle>(CElementIDs::GetElement(m_VehicleInOutID));
+                        if (pVehicle)
+                        {
+                            unsigned char ucDoor = m_ucEnteringDoor - 2;
+                            pBitStream->WriteBits(&ucDoor, 3);
+                            SDoorOpenRatioSync door;
+                            door.data.fRatio = pVehicle->GetDoorOpenRatio(m_ucEnteringDoor);
+                            pBitStream->Write(&door);
+                        }
+
+#ifdef MTA_DEBUG
+                        g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_in_abort");
+#endif
                     }
+
+                    // Send it and destroy the packet
+                    g_pNet->SendPacket(PACKET_ID_VEHICLE_INOUT, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
+                    g_pNet->DeallocateNetBitStream(pBitStream);
                 }
 
-                // Reset
-                // Don't allow a new entry/leave until we've gotten the notify return packet
-                ElementID ReasonID = m_VehicleInOutID;
-                ResetVehicleInOut();
-                m_bNoNewVehicleTask = true;
-                m_NoNewVehicleTaskReasonID = ReasonID;
+                // Warp ourself out again (so we're sure the records are correct)
+                RemoveFromVehicle();
+
+                if (pInOutVehicle)
+                {
+                    pInOutVehicle->CalcAndUpdateCanBeDamagedFlag();
+                    pInOutVehicle->CalcAndUpdateTyresCanBurstFlag();
+                }
             }
+
+            // Reset
+            // Don't allow a new entry/leave until we've gotten the notify return packet
+            ElementID ReasonID = m_VehicleInOutID;
+            ResetVehicleInOut();
+            m_bNoNewVehicleTask = true;
+            m_NoNewVehicleTaskReasonID = ReasonID;
         }
     }
     else
@@ -6949,75 +7135,72 @@ void CClientPed::UpdateVehicleInOut()
             return;
 
         // If we aren't getting jacked
-        if (!m_bIsGettingJacked)
+        if (m_bIsGettingJacked)
+            return;
+
+        CClientVehicle* pVehicle = GetRealOccupiedVehicle();
+        CClientVehicle* pOccupiedVehicle = GetOccupiedVehicle();
+
+        // Jax: this was commented, re-comment if it was there for a reason (..and give the reason!)
+        // Are we in a vehicle we aren't supposed to be in?
+        if (pVehicle && !pOccupiedVehicle)
         {
-            CClientVehicle* pVehicle = GetRealOccupiedVehicle();
-            CClientVehicle* pOccupiedVehicle = GetOccupiedVehicle();
+            g_pCore->GetConsole()->Print("You shouldn't be in this vehicle");
+            RemoveFromVehicle();
+        }
 
-            // Jax: this was commented, re-comment if it was there for a reason (..and give the reason!)
-            // Are we in a vehicle we aren't supposed to be in?
-            if (pVehicle && !pOccupiedVehicle)
+        // Are we supposed to be in a vehicle? But aren't?
+        if (!pOccupiedVehicle || pVehicle || IsWarpInToVehicleRequired())
+            return;
+
+        // Jax: this happens when we try to warp into a streamed out vehicle, including when we use CClientVehicle::StreamInNow
+        // ..maybe we need a different way to detect bike falls?
+
+        // Tell the server
+        NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
+        if (!pBitStream)
+            return;
+
+        // Write the ped or player ID to it
+        pBitStream->Write(GetID());
+
+        // Vehicle id
+        pBitStream->Write(pOccupiedVehicle->GetID());
+        unsigned char ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_FELL_OFF);
+        pBitStream->WriteBits(&ucAction, 4);
+
+        // Send it and destroy the packet
+        g_pNet->SendPacket(PACKET_ID_VEHICLE_INOUT, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
+        g_pNet->DeallocateNetBitStream(pBitStream);
+
+        // We're not allowed to enter any vehicle before we get a confirm
+        m_bNoNewVehicleTask = true;
+        m_NoNewVehicleTaskReasonID = pOccupiedVehicle->GetID();
+
+        // Remove him from the vehicle
+        RemoveFromVehicle();
+
+        /*
+        // Make it undamagable if we're not syncing it
+        CDeathmatchVehicle* pInOutVehicle = static_cast < CDeathmatchVehicle* > ( pOccupiedVehicle );
+        if ( pInOutVehicle )
+        {
+            if ( pInOutVehicle->IsSyncing () )
             {
-                g_pCore->GetConsole()->Print("You shouldn't be in this vehicle");
-                RemoveFromVehicle();
+                pInOutVehicle->SetCanBeDamaged ( true );
+                pInOutVehicle->SetTyresCanBurst ( true );
             }
-
-            // Are we supposed to be in a vehicle? But aren't?
-            if (pOccupiedVehicle && !pVehicle && !IsWarpInToVehicleRequired())
+            else
             {
-                // Jax: this happens when we try to warp into a streamed out vehicle, including when we use CClientVehicle::StreamInNow
-                // ..maybe we need a different way to detect bike falls?
-
-                // Tell the server
-                NetBitStreamInterface* pBitStream = g_pNet->AllocateNetBitStream();
-                if (pBitStream)
-                {
-                    // Write the ped or player ID to it
-                    if (g_pNet->CanServerBitStream(eBitStreamVersion::PedEnterExit))
-                    {
-                        pBitStream->Write(GetID());
-                    }
-
-                    // Vehicle id
-                    pBitStream->Write(pOccupiedVehicle->GetID());
-                    unsigned char ucAction = static_cast<unsigned char>(CClientGame::VEHICLE_NOTIFY_FELL_OFF);
-                    pBitStream->WriteBits(&ucAction, 4);
-
-                    // Send it and destroy the packet
-                    g_pNet->SendPacket(PACKET_ID_VEHICLE_INOUT, pBitStream, PACKET_PRIORITY_HIGH, PACKET_RELIABILITY_RELIABLE_ORDERED);
-                    g_pNet->DeallocateNetBitStream(pBitStream);
-
-                    // We're not allowed to enter any vehicle before we get a confirm
-                    m_bNoNewVehicleTask = true;
-                    m_NoNewVehicleTaskReasonID = pOccupiedVehicle->GetID();
-
-                    // Remove him from the vehicle
-                    RemoveFromVehicle();
-
-                    /*
-                    // Make it undamagable if we're not syncing it
-                    CDeathmatchVehicle* pInOutVehicle = static_cast < CDeathmatchVehicle* > ( pOccupiedVehicle );
-                    if ( pInOutVehicle )
-                    {
-                        if ( pInOutVehicle->IsSyncing () )
-                        {
-                            pInOutVehicle->SetCanBeDamaged ( true );
-                            pInOutVehicle->SetTyresCanBurst ( true );
-                        }
-                        else
-                        {
-                            pInOutVehicle->SetCanBeDamaged ( false );
-                            pInOutVehicle->SetTyresCanBurst ( false );
-                        }
-                    }
-                    */
-
-#ifdef MTA_DEBUG
-                    g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_fell_off");
-#endif
-                }
+                pInOutVehicle->SetCanBeDamaged ( false );
+                pInOutVehicle->SetTyresCanBurst ( false );
             }
         }
+        */
+
+#ifdef MTA_DEBUG
+        g_pCore->GetConsole()->Printf("* Sent_InOut: vehicle_notify_fell_off");
+#endif
     }
 }
 
@@ -7031,3 +7214,65 @@ void CClientPed::SetSyncing(bool bIsSyncing)
         ResetVehicleInOut();
     }
 }
+
+void CClientPed::RunClimbingTask()
+{
+    if (!m_pPlayerPed)
+        return;
+
+    CVector climbPos;
+    float   climbAngle;
+    int     surfaceType;
+
+    CEntitySAInterface* climbEntity = CTaskSimpleClimb::TestForClimb(m_pPlayerPed, climbPos, climbAngle, surfaceType, true);
+
+    // If a ped is in the air, its rotation is inverted (see GetRotationDegressNew, GetRotationRadiansNew)
+    if (!IsOnGround() && !climbEntity)
+    {
+        CVector rot;
+        GetRotationDegrees(rot);
+
+        rot.fZ += 180.0f;
+        SetRotationDegrees(rot);
+
+        climbEntity = CTaskSimpleClimb::TestForClimb(m_pPlayerPed, climbPos, climbAngle, surfaceType, true);
+    }
+
+    if (!climbEntity)
+        return;
+
+    CTaskSimpleClimb* climbTask = g_pGame->GetTasks()->CreateTaskSimpleClimb(climbEntity, climbPos, climbAngle, surfaceType, eClimbHeights::CLIMB_GRAB, false);
+    if (!climbTask)
+        return;
+
+    climbTask->SetAsPedTask(m_pPlayerPed, TASK_PRIORITY_PRIMARY, true);
+}
+
+CTaskSimpleSwim* CClientPed::GetSwimmingTask() const
+{
+    if (!m_pPlayerPed)
+        return nullptr;
+
+    CTask* simplestTask = const_cast<CTaskManager*>(GetTaskManager())->GetSimplestActiveTask();
+    if (!simplestTask || simplestTask->GetTaskType() != TASK_SIMPLE_SWIM)
+        return nullptr;
+
+    auto* swimmingTask = dynamic_cast<CTaskSimpleSwim*>(simplestTask);
+    return swimmingTask;
+}
+
+void CClientPed::RunSwimTask() const
+{
+    if (!m_pPlayerPed || GetSwimmingTask())
+        return;
+
+    CTaskComplexInWater* inWaterTask = g_pGame->GetTasks()->CreateTaskComplexInWater();
+    if (!inWaterTask)
+        return;
+
+    // Set physical flags (bTouchingWater, bSubmergedInWater)
+    m_pPlayerPed->SetInWaterFlags(true);
+
+    inWaterTask->SetAsPedTask(m_pPlayerPed, TASK_PRIORITY_EVENT_RESPONSE_NONTEMP, true);
+}
+  

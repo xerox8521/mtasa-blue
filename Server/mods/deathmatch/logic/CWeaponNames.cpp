@@ -5,13 +5,12 @@
  *  FILE:        mods/deathmatch/logic/CWeaponNames.cpp
  *  PURPOSE:     GTA weapon name definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
-
-using namespace std;
+#include "CWeaponNames.h"
 
 char szWeaponNameEmpty[] = "";
 
@@ -35,10 +34,10 @@ SWeaponName WeaponNames[] = {{"Fist"},
                              {"Poolstick"},
                              {"Katana"},
                              {"Chainsaw"},
-                             {"Dildo"},
+                             {"Purple Dildo"},
                              {"Dildo"},
                              {"Vibrator"},
-                             {"Vibrator"},
+                             {"Silver Vibrator"},
                              {"Flower"},
                              {"Cane"},
                              {"Grenade"},
@@ -110,7 +109,7 @@ unsigned char CWeaponNames::GetWeaponID(const char* szName)
     {
         if (stricmp(szName, WeaponNames[i].szName) == 0)
         {
-            return i;
+            return static_cast<unsigned char>(i);
         }
     }
 

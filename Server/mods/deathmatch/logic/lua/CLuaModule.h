@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/lua/CLuaModule.h
  *  PURPOSE:     Lua module extension class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -18,6 +18,13 @@ typedef void* HMODULE;
 class CLuaModule;
 
 #pragma once
+
+#include "ILuaModuleManager.h"
+
+class CScriptDebugging;
+class CLuaModuleManager;
+
+struct lua_State;
 
 typedef bool (*DefaultModuleFunc)();
 typedef void (*RegisterModuleFunc)(lua_State*);
@@ -82,12 +89,12 @@ public:
     FunctionInfo _GetFunctions() { return m_FunctionInfo; };
 
 private:
-    SString         m_szFileName;
-    SString         m_szShortFileName;
-    FunctionInfo    m_FunctionInfo;
-    HMODULE         m_hModule;
-    vector<SString> m_Functions;
-    bool            m_bInitialised;
+    SString              m_szFileName;
+    SString              m_szShortFileName;
+    FunctionInfo         m_FunctionInfo;
+    HMODULE              m_hModule;
+    std::vector<SString> m_Functions;
+    bool                 m_bInitialised;
 
     CScriptDebugging*  m_pScriptDebugging;
     CLuaModuleManager* m_pLuaModuleManager;

@@ -3,9 +3,13 @@
  *  PROJECT:     Multi Theft Auto
  *  LICENSE:     See LICENSE in the top level directory
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
+#pragma once
+
+#include <map>
 
 struct SModelCacheStats;
 
@@ -22,7 +26,7 @@ public:
     virtual void OnClientClose() = 0;
     virtual void UpdatePedModelCaching(const std::map<ushort, float>& newNeedCacheList) = 0;
     virtual void UpdateVehicleModelCaching(const std::map<ushort, float>& newNeedCacheList) = 0;
-    virtual void AddModelToPersistentCache(ushort usModelId) = 0;
+    virtual void SetCustomLimits(const size_t* numVehicles, const size_t* numPeds) = 0;
 };
 
 CModelCacheManager* NewModelCacheManager();

@@ -5,14 +5,24 @@
  *  FILE:        mods/deathmatch/logic/packets/CPlayerPuresyncPacket.cpp
  *  PURPOSE:     Player pure synchronization packet class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
-#include "net/SyncStructures.h"
+#include "CPlayerPuresyncPacket.h"
+#include "CElementIDs.h"
+#include "CWeaponNames.h"
+#include "Utils.h"
+#include "CTickRateSettings.h"
+#include <net/SyncStructures.h>
 
 extern CGame* g_pGame;
+
+CPlayerPuresyncPacket::CPlayerPuresyncPacket(CPlayer* pPlayer)
+{
+    m_pSourceElement = pPlayer;
+}
 
 bool CPlayerPuresyncPacket::Read(NetBitStreamInterface& BitStream)
 {
@@ -25,8 +35,8 @@ bool CPlayerPuresyncPacket::Read(NetBitStreamInterface& BitStream)
         if (!BitStream.Read(ucTimeContext))
             return false;
 
-        // Only read this packet if it matches the current time context that
-        // player is in.
+        // Only read this packet if it matches the current time context
+        // Time context is validated for all players (alive and dead) to prevent stale packets
         if (!pSourcePlayer->CanUpdateSync(ucTimeContext))
         {
             return false;
@@ -51,6 +61,12 @@ bool CPlayerPuresyncPacket::Read(NetBitStreamInterface& BitStream)
         pSourcePlayer->SetAkimboArmUp(flags.data.bAkimboTargetUp);
         pSourcePlayer->SetOnFire(flags.data.bIsOnFire);
         pSourcePlayer->SetStealthAiming(flags.data.bStealthAiming);
+        pSourcePlayer->SetReloadingWeapon(flags.data.isReloadingWeapon);
+
+        if (flags.data.animInterrupted)
+            pSourcePlayer->SetAnimationData({});
+
+        pSourcePlayer->SetHanging(flags.data.hangingDuringClimb);
 
         // Contact element
         CElement* pContactElement = NULL;
@@ -61,6 +77,40 @@ bool CPlayerPuresyncPacket::Read(NetBitStreamInterface& BitStream)
                 return false;
             pContactElement = CElementIDs::GetElement(Temp);
         }
+
+        // Player position
+        SPositionSync position(false);
+        bool          positionRead = BitStream.Read(&position);
+
+        if (positionRead && pContactElement != nullptr)
+        {
+            int32_t radius = -1;
+
+            switch (pContactElement->GetType())
+            {
+                case CElement::VEHICLE:
+                    if (((CVehicle*)pContactElement)->GetSyncer() != pSourcePlayer)
+                        radius = g_TickRateSettings.iVehicleContactSyncRadius;
+                    break;
+            }
+
+            if (radius > -1 && 
+                (!IsPointNearPoint3D(pSourcePlayer->GetPosition(), pContactElement->GetPosition(), static_cast<float>(radius)) ||
+                    pSourcePlayer->GetDimension() != pContactElement->GetDimension()))
+            {
+                pContactElement = nullptr;
+                // Use current player position. They are not reporting their absolute position so we have to disregard it.
+                position.data.vecPosition = pSourcePlayer->GetPosition();
+            }
+        }
+
+        // If the client reported contact but the element doesn't exist anymore,
+        // the coordinates become invalid as they are relative to that element.
+        if (positionRead && pContactElement == nullptr && flags.data.bHasContact)
+        {
+            position.data.vecPosition = pSourcePlayer->GetPosition();
+        }
+        
         CElement* pPreviousContactElement = pSourcePlayer->GetContactElement();
         pSourcePlayer->SetContactElement(pContactElement);
 
@@ -80,9 +130,7 @@ bool CPlayerPuresyncPacket::Read(NetBitStreamInterface& BitStream)
             pSourcePlayer->CallEvent("onPlayerContact", Arguments);
         }
 
-        // Player position
-        SPositionSync position(false);
-        if (!BitStream.Read(&position))
+        if (!positionRead)
             return false;
 
         if (pContactElement)
@@ -93,6 +141,29 @@ bool CPlayerPuresyncPacket::Read(NetBitStreamInterface& BitStream)
             CVector vecTempPos = pContactElement->GetPosition();
             position.data.vecPosition += vecTempPos;
         }
+
+        // if (position.data.vecPosition.fX != 0.0f || position.data.vecPosition.fY != 0.0f || position.data.vecPosition.fZ != 0.0f)
+        {
+            CVector playerPosition = pSourcePlayer->GetPosition();
+            float playerDistancePosition = DistanceBetweenPoints3D(playerPosition, position.data.vecPosition);
+            if (playerDistancePosition >= g_TickRateSettings.playerTeleportAlert)
+            {
+                if (!pSourcePlayer->GetTeleported())
+                {
+                    CLuaArguments arguments;
+                    arguments.PushNumber(playerPosition.fX);
+                    arguments.PushNumber(playerPosition.fY);
+                    arguments.PushNumber(playerPosition.fZ);
+                    arguments.PushNumber(position.data.vecPosition.fX);
+                    arguments.PushNumber(position.data.vecPosition.fY);
+                    arguments.PushNumber(position.data.vecPosition.fZ);
+                    pSourcePlayer->CallEvent("onPlayerTeleport", arguments, nullptr);
+                }
+
+                pSourcePlayer->SetTeleported(false);
+            }
+        }
+
         pSourcePlayer->SetPosition(position.data.vecPosition);
 
         // Player rotation
@@ -161,20 +232,26 @@ bool CPlayerPuresyncPacket::Read(NetBitStreamInterface& BitStream)
             SWeaponSlotSync slot;
             if (!BitStream.Read(&slot))
                 return false;
-            unsigned int uiSlot = slot.data.uiSlot;
+            auto ucSlot = static_cast<unsigned char>(slot.data.uiSlot);
 
             // Set weapon slot
             if (bWeaponCorrect)
-                pSourcePlayer->SetWeaponSlot(uiSlot);
+                pSourcePlayer->SetWeaponSlot(ucSlot);
+            else
+            {
+                // remove invalid weapon data to prevent this from being relayed to other players
+                ucClientWeaponType = 0;
+                slot.data.uiSlot = 0;
+            }
 
-            if (CWeaponNames::DoesSlotHaveAmmo(uiSlot))
+            if (CWeaponNames::DoesSlotHaveAmmo(ucSlot))
             {
                 // Read out the ammo states
                 SWeaponAmmoSync ammo(ucUseWeaponType, true, true);
                 if (!BitStream.Read(&ammo))
                     return false;
 
-                float fWeaponRange = pSourcePlayer->GetWeaponRangeFromSlot(uiSlot);
+                float fWeaponRange = pSourcePlayer->GetWeaponRangeFromSlot(ucSlot);
 
                 // Read out the aim data
                 SWeaponAimSync sync(fWeaponRange, (ControllerState.RightShoulder1 || ControllerState.ButtonCircle));
@@ -229,7 +306,7 @@ bool CPlayerPuresyncPacket::Read(NetBitStreamInterface& BitStream)
             if (!BitStream.Read(&bodyPart))
                 return false;
 
-            pSourcePlayer->SetDamageInfo(DamagerID, weaponType.data.ucWeaponType, bodyPart.data.uiBodypart);
+            pSourcePlayer->SetDamageInfo(DamagerID, weaponType.data.ucWeaponType, static_cast<unsigned char>(bodyPart.data.uiBodypart));
         }
 
         // If we know the player's dead, make sure the health we send on is 0
@@ -277,7 +354,7 @@ bool CPlayerPuresyncPacket::Write(NetBitStreamInterface& BitStream) const
         CPlayer* pSourcePlayer = static_cast<CPlayer*>(m_pSourceElement);
 
         ElementID               PlayerID = pSourcePlayer->GetID();
-        unsigned short          usLatency = pSourcePlayer->GetPing();
+        auto                    usLatency = static_cast<unsigned short>(pSourcePlayer->GetPing());
         const CControllerState& ControllerState = pSourcePlayer->GetPad()->GetCurrentControllerState();
         CElement*               pContactElement = pSourcePlayer->GetContactElement();
 
@@ -298,6 +375,8 @@ bool CPlayerPuresyncPacket::Write(NetBitStreamInterface& BitStream) const
         flags.data.bHasAWeapon = (ucWeaponSlot != 0);
         flags.data.bSyncingVelocity = (!flags.data.bIsOnGround || pSourcePlayer->IsSyncingVelocity());
         flags.data.bStealthAiming = (pSourcePlayer->IsStealthAiming() == true);
+        flags.data.isReloadingWeapon = pSourcePlayer->IsReloadingWeapon();
+        flags.data.hangingDuringClimb = pSourcePlayer->IsHanging();
 
         CVector vecPosition = pSourcePlayer->GetPosition();
         if (pContactElement)

@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 2014 - 2020, Steve Holme, <steve_holme@hotmail.com>.
+ * Copyright (C) Steve Holme, <steve_holme@hotmail.com>.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -18,24 +18,28 @@
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
  *
+ * SPDX-License-Identifier: curl
+ *
  ***************************************************************************/
 
-#include "curl_setup.h"
+#include "../curl_setup.h"
 
 #include <curl/curl.h>
 
 #include "vauth.h"
-#include "curl_multibyte.h"
-#include "curl_printf.h"
+#include "../urldata.h"
+#include "../strcase.h"
+#include "../curlx/multibyte.h"
+#include "../curl_printf.h"
 
 /* The last #include files should be: */
-#include "curl_memory.h"
-#include "memdebug.h"
+#include "../curl_memory.h"
+#include "../memdebug.h"
 
 /*
  * Curl_auth_build_spn()
  *
- * This is used to build a SPN string in the following formats:
+ * This is used to build an SPN string in the following formats:
  *
  * service/host@realm (Not currently used)
  * service/host       (Not used by GSS-API)
@@ -44,7 +48,7 @@
  * Parameters:
  *
  * service  [in] - The service type such as http, smtp, pop or imap.
- * host     [in] - The host name.
+ * host     [in] - The hostname.
  * realm    [in] - The realm.
  *
  * Returns a pointer to the newly allocated SPN.
@@ -72,6 +76,7 @@ TCHAR *Curl_auth_build_spn(const char *service, const char *host,
 {
   char *utf8_spn = NULL;
   TCHAR *tchar_spn = NULL;
+  TCHAR *dupe_tchar_spn = NULL;
 
   (void) realm;
 
@@ -84,23 +89,19 @@ TCHAR *Curl_auth_build_spn(const char *service, const char *host,
 
   /* Generate our UTF8 based SPN */
   utf8_spn = aprintf("%s/%s", service, host);
-  if(!utf8_spn) {
+  if(!utf8_spn)
     return NULL;
-  }
 
-  /* Allocate our TCHAR based SPN */
+  /* Allocate and return a TCHAR based SPN. Since curlx_convert_UTF8_to_tchar
+     must be freed by curlx_unicodefree we will dupe the result so that the
+     pointer this function returns can be normally free'd. */
   tchar_spn = curlx_convert_UTF8_to_tchar(utf8_spn);
-  if(!tchar_spn) {
-    free(utf8_spn);
-
+  free(utf8_spn);
+  if(!tchar_spn)
     return NULL;
-  }
-
-  /* Release the UTF8 variant when operating with Unicode */
-  curlx_unicodefree(utf8_spn);
-
-  /* Return our newly allocated SPN */
-  return tchar_spn;
+  dupe_tchar_spn = _tcsdup(tchar_spn);
+  curlx_unicodefree(tchar_spn);
+  return dupe_tchar_spn;
 }
 #endif /* USE_WINDOWS_SSPI */
 
@@ -114,14 +115,14 @@ TCHAR *Curl_auth_build_spn(const char *service, const char *host,
  * Domain/User (curl Down-level format - for compatibility with existing code)
  * User@Domain (User Principal Name)
  *
- * Note: The user name may be empty when using a GSS-API library or Windows
+ * Note: The username may be empty when using a GSS-API library or Windows
  * SSPI as the user and domain are either obtained from the credentials cache
  * when using GSS-API or via the currently logged in user's credentials when
  * using Windows SSPI.
  *
  * Parameters:
  *
- * user  [in] - The user name.
+ * user  [in] - The username.
  *
  * Returns TRUE on success; otherwise FALSE.
  */
@@ -133,8 +134,7 @@ bool Curl_auth_user_contains_domain(const char *user)
     /* Check we have a domain name or UPN present */
     char *p = strpbrk(user, "\\/@");
 
-    valid = (p != NULL && p > user && p < user + strlen(user) - 1 ? TRUE :
-                                                                    FALSE);
+    valid = (p != NULL && p > user && p < user + strlen(user) - 1);
   }
 #if defined(HAVE_GSSAPI) || defined(USE_WINDOWS_SSPI)
   else
@@ -144,4 +144,19 @@ bool Curl_auth_user_contains_domain(const char *user)
 #endif
 
   return valid;
+}
+
+/*
+ * Curl_auth_ollowed_to_host() tells if authentication, cookies or other
+ * "sensitive data" can (still) be sent to this host.
+ */
+bool Curl_auth_allowed_to_host(struct Curl_easy *data)
+{
+  struct connectdata *conn = data->conn;
+  return !data->state.this_is_a_follow ||
+         data->set.allow_auth_to_other_hosts ||
+         (data->state.first_host &&
+          strcasecompare(data->state.first_host, conn->host.name) &&
+          (data->state.first_remote_port == conn->remote_port) &&
+          (data->state.first_remote_protocol == conn->handler->protocol));
 }

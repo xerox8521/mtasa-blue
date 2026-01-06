@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/luadefs/CLuaAudioDefs.h
  *  PURPOSE:     Lua audio definitions class header
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -59,6 +59,8 @@ public:
     LUA_DECLARE(GetSoundMetaTags);
     LUA_DECLARE(SetSoundEffectEnabled);
     LUA_DECLARE(GetSoundEffects);
+    LUA_DECLARE(SetSoundEffectParameter);
+    LUA_DECLARE(GetSoundEffectParameters);
     LUA_DECLARE(SetSoundPan);
     LUA_DECLARE(GetSoundPan);
 

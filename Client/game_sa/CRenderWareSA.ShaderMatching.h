@@ -6,6 +6,10 @@
  *
  *****************************************************************************/
 
+#pragma once
+
+#include "CRenderWareSA.ShaderSupport.h"
+
 #ifdef SHADER_DEBUG_OUTPUT
 class CShaderAndEntityPair;
 struct SWildcardMatchChain;
@@ -262,6 +266,7 @@ public:
     void               RemoveClientEntityRefs(CClientEntityBase* pClientEntity);
     void               RemoveShaderRefs(CSHADERDUMMY* pShaderData);
     void               GetShaderReplacementStats(SShaderReplacementStats& outStats);
+    void               CleanupInvalidatedShaderCache();            // Cleanup deferred invalidated entries
 
 protected:
     void           CalcShaderForTexAndEntity(SShaderInfoLayers& outShaderLayers, STexNameInfo* pTexNameInfo, CClientEntityBase* pClientEntity, int iEntityType,

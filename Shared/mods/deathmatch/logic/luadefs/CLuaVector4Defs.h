@@ -5,7 +5,7 @@
  *  FILE:        Shared/mods/deathmatch/logic/luadefs/CLuaVector4Defs.h
  *  PURPOSE:     Lua general class functions
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -17,6 +17,8 @@ extern "C"
     #include "lualib.h"
     #include "lauxlib.h"
 }
+
+#include "luadefs/CLuaDefs.h"
 
 class CLuaVector4Defs : public CLuaDefs
 {

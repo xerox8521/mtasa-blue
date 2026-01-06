@@ -9,6 +9,7 @@
  *****************************************************************************/
 
 #include <StdInc.h>
+#include <game/CProjectileInfo.h>
 
 #define AIRBOMB_MAX_LIFETIME 60000
 
@@ -288,7 +289,7 @@ void CClientProjectile::GetVelocity(CVector& vecVelocity)
 void CClientProjectile::SetVelocity(CVector& vecVelocity)
 {
     if (m_pProjectile)
-        m_pProjectile->SetMoveSpeed(&vecVelocity);
+        m_pProjectile->SetMoveSpeed(vecVelocity);
 }
 
 unsigned short CClientProjectile::GetModel()

@@ -9,6 +9,7 @@
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <game/CSettings.h>
 #include "CBassAudio.h"
 
 using SharedUtil::CalcMTASAPath;
@@ -37,9 +38,12 @@ CClientSoundManager::CClientSoundManager(CClientManager* pClientManager)
         g_pCore->GetConsole()->Printf("BASS ERROR %d in PluginLoad AC3", BASS_ErrorGetCode());
     if (!BASS_PluginLoad("bassopus.dll", 0) && BASS_ErrorGetCode() != BASS_ERROR_ALREADY)
         g_pCore->GetConsole()->Printf("BASS ERROR %d in PluginLoad OPUS", BASS_ErrorGetCode());
+    if (!BASS_PluginLoad("basswebm.dll", 0) && BASS_ErrorGetCode() != BASS_ERROR_ALREADY)
+        g_pCore->GetConsole()->Printf("BASS ERROR %d in PluginLoad WEBM", BASS_ErrorGetCode());
 
     BASS_SetConfig(BASS_CONFIG_NET_PREBUF, 0);
     BASS_SetConfig(BASS_CONFIG_NET_PLAYLIST, 1);            // Allow playlists
+    BASS_SetConfig(BASS_CONFIG_NET_TIMEOUT, 15000);
 
     m_strUserAgent = SString("MTA:SA Server %s - See http://mtasa.com/agent/", g_pNet->GetConnectedServer(true));
     BASS_SetConfigPtr(BASS_CONFIG_NET_AGENT, (void*)*m_strUserAgent);
@@ -66,8 +70,18 @@ CClientSoundManager::CClientSoundManager(CClientManager* pClientManager)
 CClientSoundManager::~CClientSoundManager()
 {
     ProcessStopQueues(true);
+    
+    // Signal stream threads to exit as soon as their blocking call returns
+    SignalStreamingThreadsToStop();
+    
+    // Stopping and freeing BASS should lead any pending BASS_StreamCreateURL to abort/return.
+    // This makes threads exit quickly
     BASS_Stop();
     BASS_Free();
+    
+    // Now wait for threads to finish - they should exit almost immediately since BASS was freed.
+    // Use a short timeout since the blocking call should have been interrupted.
+    WaitForAllStreamingThreads(3000);
 }
 
 void CClientSoundManager::DoPulse()
@@ -134,10 +148,11 @@ CClientSound* CClientSoundManager::PlaySound2D(const SString& strSound, bool bIs
     else if (bIsRawData)
     {
         size_t size = strSound.size();
-        void* pMemory = new char[size];
+        void*  pMemory = new char[size];
         memcpy(pMemory, strSound.data(), size);
         if (pSound->Play((void*)pMemory, size, bLoop))
             return pSound;
+        // Note: pMemory is already owned by pSound via AdoptBuffer, don't delete it here
     }
     else if (pSound->Play(strSound, bLoop))
         return pSound;
@@ -170,13 +185,14 @@ CClientSound* CClientSoundManager::PlaySound3D(const SString& strSound, bool bIs
     else if (bIsRawData)
     {
         size_t size = strSound.size();
-        void* pMemory = new char[size];
+        void*  pMemory = new char[size];
         memcpy(pMemory, strSound.data(), size);
         if (pSound->Play3D((void*)pMemory, size, bLoop))
         {
             pSound->SetPosition(vecPosition);
             return pSound;
         }
+        // Note: pMemory is already owned by pSound via AdoptBuffer, don't delete it here
     }
     else if (pSound->Play3D(strSound, bLoop))
     {

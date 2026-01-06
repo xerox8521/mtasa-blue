@@ -5,9 +5,17 @@
  *  FILE:        mods/deathmatch/logic/CPerfStatModule.h
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
+#pragma once
+
+#include "CBandwidthSettings.h"
+
+class CLuaMain;
+class CRegistry;
+struct lua_State;
 
 //
 // Use global struct instead of calls for efficient gathering of certain stats

@@ -5,7 +5,7 @@
  *  FILE:        gui/CGUIWebBrowser_Impl.h
  *  PURPOSE:     WebBrowser CGUI class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 #pragma once
@@ -46,6 +46,7 @@ public:
 protected:
     bool Event_MouseButtonDown(const CEGUI::EventArgs& e);
     bool Event_MouseButtonUp(const CEGUI::EventArgs& e);
+    bool Event_MouseDoubleClick(const CEGUI::EventArgs& e);
     bool Event_MouseWheel(const CEGUI::EventArgs& e);
     bool Event_MouseMove(const CEGUI::EventArgs& e);
     bool Event_Activated(const CEGUI::EventArgs& e);

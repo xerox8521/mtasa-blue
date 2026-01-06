@@ -5,17 +5,18 @@
  *  FILE:        game_sa/CKeyGenSA.cpp
  *  PURPOSE:     Game key generator
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CKeyGenSA.h"
 
 unsigned int CKeyGenSA::GetKey(const char* szString, int iLength)
 {
     unsigned int uiReturn;
     DWORD        dwFunc = FUNC_CKeyGen_GetKey_len;
-    _asm
+    __asm
     {
         push    iLength
         push    szString
@@ -30,7 +31,7 @@ unsigned int CKeyGenSA::GetKey(const char* szString)
 {
     unsigned int uiReturn;
     DWORD        dwFunc = FUNC_CKeyGen_GetKey;
-    _asm
+    __asm
     {
         push    szString
         call    dwFunc
@@ -44,7 +45,7 @@ unsigned int CKeyGenSA::GetUppercaseKey(const char* szString)
 {
     unsigned int uiReturn;
     DWORD        dwFunc = FUNC_CKeyGen_GetUppercaseKey;
-    _asm
+    __asm
     {
         push    szString
         call    dwFunc
@@ -58,7 +59,7 @@ unsigned int CKeyGenSA::AppendStringToKey(unsigned int uiKey, const char* szStri
 {
     unsigned int uiReturn;
     DWORD        dwFunc = FUNC_CKeyGen_AppendStringToKey;
-    _asm
+    __asm
     {
         push    szString
         push    uiKey

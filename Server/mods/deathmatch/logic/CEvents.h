@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CEvents.h
  *  PURPOSE:     Event manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -14,13 +14,14 @@
 #include <string>
 #include <list>
 #include <vector>
+#include "CEventContext.h"
 
 struct SEvent
 {
-    class CLuaMain* pLuaMain;
-    std::string     strName;
-    std::string     strArguments;
-    bool            bAllowRemoteTrigger;
+    std::vector<class CLuaMain*> pLuaMainVector;
+    std::string                  strName;
+    std::string                  strArguments;
+    bool                         bAllowRemoteTrigger;
 };
 
 class CEvents
@@ -40,8 +41,8 @@ public:
     CFastHashMap<SString, SEvent*>::const_iterator IterBegin() { return m_EventHashMap.begin(); };
     CFastHashMap<SString, SEvent*>::const_iterator IterEnd() { return m_EventHashMap.end(); };
 
-    void PreEventPulse();
-    void PostEventPulse();
+    void PreEventPulse(CEventContext* pContext);
+    void PostEventPulse(CEventContext* pContext);
 
     void        CancelEvent(bool bCancelled = true);
     void        CancelEvent(bool bCancelled, const char* szReason);
@@ -53,9 +54,10 @@ private:
 
     CFastHashMap<SString, SEvent*> m_EventHashMap;
 
-    std::vector<int> m_CancelledList;
-    bool             m_bEventCancelled;
-    bool             m_bWasEventCancelled;
+    std::vector<int>               m_CancelledList;
+    bool                           m_bEventCancelled;
+    bool                           m_bWasEventCancelled;
+    SString                        m_strLastError;
 
-    SString m_strLastError;
+    std::vector<CEventContext*>    m_ContextStack;
 };

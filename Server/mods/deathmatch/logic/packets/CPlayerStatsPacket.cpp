@@ -5,11 +5,13 @@
  *  FILE:        mods/deathmatch/logic/packets/CPlayerStatsPacket.cpp
  *  PURPOSE:     Player statistics packet class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPlayerStatsPacket.h"
+#include "CElement.h"
 
 bool CPlayerStatsPacket::Write(NetBitStreamInterface& BitStream) const
 {

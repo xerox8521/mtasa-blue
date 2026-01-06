@@ -5,11 +5,16 @@
  *  FILE:        game_sa/CAnimBlendAssocGroupSA.cpp
  *  PURPOSE:     Animation blend association group
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <core/CCoreInterface.h>
+#include "CAnimBlendAssocGroupSA.h"
+#include "CAnimBlockSA.h"
+
+extern CCoreInterface* g_pCore;
 
 CAnimBlendAssocGroupSA::CAnimBlendAssocGroupSA(CAnimBlendAssocGroupSAInterface* pInterface)
 {
@@ -24,7 +29,7 @@ CAnimBlendAssociationSAInterface* CAnimBlendAssocGroupSA::CopyAnimation(unsigned
 
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAnimBlendAssocGroup_CopyAnimation;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         push    AnimID
@@ -38,7 +43,7 @@ void CAnimBlendAssocGroupSA::InitEmptyAssociations(RpClump* pClump)
 {
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAnimBlendAssocGroup_InitEmptyAssociations;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         push    pClump
@@ -51,7 +56,7 @@ bool CAnimBlendAssocGroupSA::IsCreated()
     bool  bReturn;
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAnimBlendAssocGroup_IsCreated;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         call    dwFunc
@@ -65,7 +70,7 @@ int CAnimBlendAssocGroupSA::GetNumAnimations()
     int   iReturn;
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAnimBlendAssocGroup_GetNumAnimations;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         call    dwFunc
@@ -87,7 +92,7 @@ CAnimBlendStaticAssociation* CAnimBlendAssocGroupSA::GetAnimation(unsigned int I
     CAnimBlendStaticAssociation* pReturn;
     DWORD                        dwThis = (DWORD)m_pInterface;
     DWORD                        dwFunc = FUNC_CAnimBlendAssocGroup_GetAnimation;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         push    ID
@@ -101,8 +106,7 @@ eAnimGroup CAnimBlendAssocGroupSA::GetGroupID()
 {
     if ((DWORD)m_pInterface < 0x250)
     {
-        g_pCore->LogEvent(543, "CAnimBlendAssocGroupSA::GetGroupID", "Incorrect Group Interface",
-            SString("pAnimAssocGroupInterface = %p", m_pInterface), 543);
+        g_pCore->LogEvent(543, "CAnimBlendAssocGroupSA::GetGroupID", "Incorrect Group Interface", SString("pAnimAssocGroupInterface = %p", m_pInterface), 543);
     }
     return static_cast<eAnimGroup>(m_pInterface->groupID);
 };
@@ -120,7 +124,7 @@ void CAnimBlendAssocGroupSA::CreateAssociations(const char* szBlockName)
 {
     DWORD dwThis = (DWORD)m_pInterface;
     DWORD dwFunc = FUNC_CAnimBlendAssocGroup_CreateAssociations;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         push    szBlockName

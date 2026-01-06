@@ -5,11 +5,12 @@
  *  FILE:        mods/deathmatch/logic/rpc/CPedRPCs.cpp
  *  PURPOSE:     Ped remote procedure calls
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <game/CAnimManager.h>
 #include "CPedRPCs.h"
 #include "net/SyncStructures.h"
 
@@ -259,14 +260,11 @@ void CPedRPCs::SetPedAnimation(CClientEntity* pSource, NetBitStreamInterface& bi
                 if (bitStream.ReadString<unsigned char>(animName) && bitStream.Read(iTime) && bitStream.ReadBit(bLoop) && bitStream.ReadBit(bUpdatePosition) &&
                     bitStream.ReadBit(bInterruptable) && bitStream.ReadBit(bFreezeLastFrame))
                 {
-                    if (bitStream.Can(eBitStreamVersion::SetPedAnimation_Blend))
+                    bitStream.Read(iBlend);
+                    bitStream.ReadBit(bTaskToBeRestoredOnAnimEnd);
+                    if (!pPed->IsDucked())
                     {
-                        bitStream.Read(iBlend);
-                        bitStream.ReadBit(bTaskToBeRestoredOnAnimEnd);
-                        if (!pPed->IsDucked())
-                        {
-                            bTaskToBeRestoredOnAnimEnd = false;
-                        }
+                        bTaskToBeRestoredOnAnimEnd = false;
                     }
 
                     std::unique_ptr<CAnimBlock> pBlock = g_pGame->GetAnimManager()->GetAnimationBlock(blockName.c_str());
@@ -275,6 +273,12 @@ void CPedRPCs::SetPedAnimation(CClientEntity* pSource, NetBitStreamInterface& bi
                         pPed->RunNamedAnimation(pBlock, animName.c_str(), iTime, iBlend, bLoop, bUpdatePosition, bInterruptable, bFreezeLastFrame);
                         pPed->SetTaskToBeRestoredOnAnimEnd(bTaskToBeRestoredOnAnimEnd);
                         pPed->SetTaskTypeToBeRestoredOnAnimEnd((eTaskType)TASK_SIMPLE_DUCK);
+
+                        pPed->m_AnimationCache.startTime = GetTimestamp();
+                        pPed->m_AnimationCache.speed = 1.0f;
+                        pPed->m_AnimationCache.progress = 0.0f;
+
+                        pPed->SetHasSyncedAnim(true);
                     }
                 }
             }
@@ -306,6 +310,7 @@ void CPedRPCs::SetPedAnimationProgress(CClientEntity* pSource, NetBitStreamInter
                     if (pAnimAssociation)
                     {
                         pAnimAssociation->SetCurrentProgress(fProgress);
+                        pPed->m_AnimationCache.progress = fProgress;
                     }
                 }
             }
@@ -333,6 +338,7 @@ void CPedRPCs::SetPedAnimationSpeed(CClientEntity* pSource, NetBitStreamInterfac
                 if (pAnimAssociation)
                 {
                     pAnimAssociation->SetCurrentSpeed(fSpeed);
+                    pPed->m_AnimationCache.speed = fSpeed;
                 }
             }
         }

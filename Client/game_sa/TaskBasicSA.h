@@ -5,17 +5,19 @@
  *  FILE:        game_sa/TaskBasicSA.h
  *  PURPOSE:     Basic game tasks
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include <CVector.h>
+#include <game/CPed.h>
 #include <game/TaskBasic.h>
-
 #include "TaskSA.h"
+
+class CVehicleSAInterface;
+class CObjectSAInterface;
 
 #define FUNC_CTaskComplexUseMobilePhone__Constructor        0x6348A0
 #define FUNC_CTaskSimpleRunAnim__Constructor                0x61A900
@@ -111,6 +113,12 @@ public:
     CTaskSimpleRunNamedAnimSA(const char* pAnimName, const char* pAnimGroupName, const int flags, const float fBlendDelta, const int iTime = -1,
                               const bool bDontInterrupt = false, const bool bRunInSequence = false, const bool bOffsetPed = false,
                               const bool bHoldLastFrame = false);
+
+    CTaskSimpleRunNamedAnimSAInterface*       GetAnimationInterface() noexcept;
+    const CTaskSimpleRunNamedAnimSAInterface* GetAnimationInterface() const noexcept;
+
+    const char* GetAnimName() const noexcept override;
+    const char* GetGroupName() const noexcept override;
 };
 
 class CTaskComplexDieSAInterface : public CTaskComplexSAInterface
@@ -191,18 +199,18 @@ class CAnimBlock;
 class CTaskComplexSunbatheSAInterface : public CTaskComplexSAInterface
 {
 public:
-    bool           m_bStartStanding;
-    bool           m_bBathing;
-    bool           m_bBeachAnimsReferenced;
-    bool           m_bSunbatheAnimsReferenced;
-    bool           m_bAborted;
-    CTaskTimer     m_BathingTimer;
-    eSunbatherType m_SunbatherType;
-    CAnimBlock*    m_pBeachAnimBlock;
-    CAnimBlock*    m_pSunbatheAnimBlock;
-    int            m_BeachAnimBlockIndex;
-    int            m_SunbatheAnimBlockIndex;
-    CObject*       m_pTowel;
+    bool                m_bStartStanding;
+    bool                m_bBathing;
+    bool                m_bBeachAnimsReferenced;
+    bool                m_bSunbatheAnimsReferenced;
+    bool                m_bAborted;
+    CTaskTimer          m_BathingTimer;
+    eSunbatherType      m_SunbatherType;
+    CAnimBlock*         m_pBeachAnimBlock;
+    CAnimBlock*         m_pSunbatheAnimBlock;
+    int                 m_BeachAnimBlockIndex;
+    int                 m_SunbatheAnimBlockIndex;
+    CObjectSAInterface* m_pTowel;
 };
 
 class CTaskComplexSunbatheSA : public virtual CTaskComplexSA, public virtual CTaskComplexSunbathe
@@ -242,4 +250,15 @@ class CTaskComplexFacialSA : public virtual CTaskComplexSA, public virtual CTask
 {
 public:
     CTaskComplexFacialSA();
+};
+
+class CTaskComplexInWaterSAInterface : public CTaskComplexSAInterface
+{
+public:
+};
+
+class CTaskComplexInWaterSA : public virtual CTaskComplexSA, public virtual CTaskComplexInWater
+{
+public:
+    CTaskComplexInWaterSA();
 };

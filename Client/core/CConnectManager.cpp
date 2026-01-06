@@ -5,12 +5,12 @@
  *  FILE:        core/CConnectManager.cpp
  *  PURPOSE:     Manager for connecting to servers
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
-#include "net/packetenums.h"
+#include "net/Packets.h"
 using namespace std;
 
 static CConnectManager* g_pConnectManager = NULL;
@@ -46,11 +46,17 @@ CConnectManager::~CConnectManager()
     g_pConnectManager = NULL;
 }
 
-bool CConnectManager::Connect(const char* szHost, unsigned short usPort, const char* szNick, const char* szPassword, bool bNotifyServerBrowser, const char* szSecret)
+bool CConnectManager::Connect(const char* szHost, unsigned short usPort, const char* szNick, const char* szPassword, bool bNotifyServerBrowser)
 {
     assert(szHost);
     assert(szNick);
     assert(szPassword);
+
+    if (!CCore::GetSingleton().IsNetworkReady())
+    {
+        CCore::GetSingleton().GetLocalGUI()->GetMainMenu()->ShowNetworkNotReadyWindow();
+        return false;
+    }
 
     m_bNotifyServerBrowser = bNotifyServerBrowser;
 
@@ -100,11 +106,6 @@ bool CConnectManager::Connect(const char* szHost, unsigned short usPort, const c
     m_usPort = usPort;
     m_bSave = true;
 
-    if (szSecret)
-        m_strDiscordSecretJoin = szSecret;
-    else
-        m_strDiscordSecretJoin.clear();
-
     m_strLastHost = m_strHost;
     m_usLastPort = m_usPort;
     m_strLastPassword = m_strPassword;
@@ -150,6 +151,8 @@ bool CConnectManager::Connect(const char* szHost, unsigned short usPort, const c
 
     // Display the status box
     SString strBuffer(_("Connecting to %s:%u ..."), m_strHost.c_str(), m_usPort);
+    if (m_bReconnect)
+        strBuffer = SString(_("Reconnecting to %s:%u ..."), m_strHost.c_str(), m_usPort);
     CCore::GetSingleton().ShowMessageBox(_("CONNECTING"), strBuffer, MB_BUTTON_CANCEL | MB_ICON_INFO, m_pOnCancelClick);
     WriteDebugEvent(SString("Connecting to %s:%u ...", m_strHost.c_str(), m_usPort));
 
@@ -162,7 +165,7 @@ bool CConnectManager::Reconnect(const char* szHost, unsigned short usPort, const
     unsigned int uiPort = 0;
     CVARS_GET("host", m_strHost);
     CVARS_GET("port", uiPort);
-    m_usPort = uiPort;
+    m_usPort = static_cast<unsigned short>(uiPort);
 
     // If keeping the same host & port, retrieve the password as well
     if (!szHost || !szHost[0] || m_strHost == szHost)
@@ -340,10 +343,13 @@ void CConnectManager::DoPulse()
     }
     else if (m_bReconnect)
     {
-        std::string strNick;
-        CVARS_GET("nick", strNick);
-        Connect(m_strHost.c_str(), m_usPort, strNick.c_str(), m_strPassword.c_str(), false);
-        m_bReconnect = false;
+        if (CCore::GetSingleton().IsNetworkReady())
+        {
+            std::string strNick;
+            CVARS_GET("nick", strNick);
+            Connect(m_strHost.c_str(), m_usPort, strNick.c_str(), m_strPassword.c_str(), false);
+            m_bReconnect = false;
+        }
     }
 }
 
@@ -367,7 +373,7 @@ bool CConnectManager::StaticProcessPacket(unsigned char ucPacketID, NetBitStream
             // Process packet data
             CCore::GetSingleton().GetNetwork()->SetServerBitStreamVersion(usServerBitStreamVersion);
 
-            if (strModName != "")
+            if (strModName == "deathmatch")
             {
                 // Populate the arguments to pass it (-c host port nick)
                 SString strArguments("%s %s", g_pConnectManager->m_strNick.c_str(), g_pConnectManager->m_strPassword.c_str());
@@ -402,7 +408,7 @@ bool CConnectManager::StaticProcessPacket(unsigned char ucPacketID, NetBitStream
                 g_pConnectManager->m_tConnectStarted = 0;
 
                 // Load the mod
-                if (!CModManager::GetSingleton().Load(strModName, strArguments))
+                if (!CModManager::GetSingleton().Load(strArguments))
                 {
                     // Failed loading the mod
                     strArguments.Format(_("No such mod installed (%s)"), strModName.c_str());
@@ -481,7 +487,7 @@ void CConnectManager::OpenServerFirewall(in_addr Address, ushort usHttpPort, boo
         SHttpRequestOptions options;
         options.uiConnectionAttempts = 1;
         options.uiConnectTimeoutMs = uiTimeOut;
-        SString strDummyUrl("http://%s:%d/mta_client_firewall_probe/", inet_ntoa(Address), usHttpPort);
+        SString strDummyUrl("https://%s:%d/mta_client_firewall_probe/", inet_ntoa(Address), usHttpPort);
         g_pCore->GetNetwork()->GetHTTPDownloadManager(EDownloadMode::CONNECT_TCP_SEND)->QueueFile(strDummyUrl, NULL, NULL, NULL, options);
     }
     if (usHttpPort == 0 || bHighPriority)
@@ -490,14 +496,7 @@ void CConnectManager::OpenServerFirewall(in_addr Address, ushort usHttpPort, boo
         SHttpRequestOptions options;
         options.uiConnectionAttempts = 1;
         options.uiConnectTimeoutMs = uiTimeOut;
-        SString strDummyUrl("http://%s/mta_client_firewall_probe/", inet_ntoa(Address));
+        SString strDummyUrl("https://%s/mta_client_firewall_probe/", inet_ntoa(Address));
         g_pCore->GetNetwork()->GetHTTPDownloadManager(EDownloadMode::CONNECT_TCP_SEND)->QueueFile(strDummyUrl, NULL, NULL, NULL, options);
     }
-}
-
-SString CConnectManager::GetJoinSecret()
-{
-    SString dummy = m_strDiscordSecretJoin;
-    m_strDiscordSecretJoin.clear();
-    return dummy;
 }

@@ -5,11 +5,18 @@
  *  FILE:        mods/deathmatch/logic/CPickup.cpp
  *  PURPOSE:     Pickup entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPickup.h"
+#include "CPickupManager.h"
+#include "CLogger.h"
+#include "Utils.h"
+#include "CGame.h"
+#include "packets/CPickupHitConfirmPacket.h"
+#include "CStaticFunctionDefinitions.h"
 
 extern CGame* g_pGame;
 
@@ -17,7 +24,7 @@ CPickup::CPickup(CElement* pParent, CPickupManager* pPickupManager, CColManager*
 {
     // Init
     m_pPickupManager = pPickupManager;
-    m_pCollision = new CColSphere(pColManager, nullptr, m_vecPosition, 2.0f, true);
+    m_pCollision = new CColSphere(pColManager, nullptr, m_vecPosition, 1.0f, true);
     m_pCollision->SetEnabled(false);
     m_pCollision->SetCallback(this);
     m_pCollision->SetAutoCallEvent(false);
@@ -123,7 +130,7 @@ bool CPickup::ReadSpecialData(const int iLine)
         }
         else if (IsNumericString(szBuffer))
         {            // could be a weapon
-            usBuffer = atoi(szBuffer);
+            usBuffer = static_cast<unsigned short>(atoi(szBuffer));
             if (CPickupManager::IsValidWeaponID(usBuffer))
             {            // its a weapon
                 m_ucType = WEAPON;

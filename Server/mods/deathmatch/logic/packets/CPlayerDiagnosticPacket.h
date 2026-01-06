@@ -5,11 +5,13 @@
  *  FILE:        mods/deathmatch/logic/packets/CPlayerDiagnosticPacket.h
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
+
+#include "CPacket.h"
 
 class CPlayerDiagnosticPacket final : public CPacket
 {

@@ -4,7 +4,7 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        SharedUtil.Thread.h
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -22,6 +22,8 @@ struct timeval
     long tv_usec; /* and microseconds */
 };
 #endif
+#else
+    #include <sys/time.h>
 #endif
 
 namespace SharedUtil

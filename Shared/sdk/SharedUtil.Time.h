@@ -5,7 +5,7 @@
  *  FILE:        SharedUtil.Time.h
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 #pragma once
@@ -40,6 +40,8 @@ namespace SharedUtil
     // Retrieves the number of seconds that have elapsed since some arbitrary point in time.
     //
     double GetSecondCount();
+
+    std::int64_t GetTimestamp();
 
     //
     // Get the time as a sortable string.
@@ -215,15 +217,9 @@ namespace SharedUtil
     class CElapsedTimeHD
     {
     public:
-        CElapsedTimeHD()
-        {
-            Reset();
-        }
+        CElapsedTimeHD() { Reset(); }
 
-        void Reset()
-        {
-            m_resetTime = DoGetTickCount();
-        }
+        void Reset() { m_resetTime = DoGetTickCount(); }
 
         // Returns time in milliseconds since last reset
         double Get()
@@ -233,10 +229,7 @@ namespace SharedUtil
         }
 
     protected:
-        std::chrono::high_resolution_clock::time_point DoGetTickCount()
-        {
-            return std::chrono::high_resolution_clock::now();
-        }
+        std::chrono::high_resolution_clock::time_point DoGetTickCount() { return std::chrono::high_resolution_clock::now(); }
 
         std::chrono::high_resolution_clock::time_point m_resetTime;
     };

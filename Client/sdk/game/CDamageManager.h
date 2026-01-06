@@ -5,13 +5,11 @@
  *  FILE:        sdk/game/CDamageManager.h
  *  PURPOSE:     Damage manager interface
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
-
-#include <windows.h>
 
 // Not sure if R* used these
 #define DT_ENGINE_OK                    (0)
@@ -57,12 +55,12 @@ enum ePlaneComponentStatus
     DT_PLANE_MISSING
 };
 
-enum eComponentStatus
+enum eComponentStatus : std::uint8_t
 {
     DT_PANEL_INTACT = 0,
-    //  DT_PANEL_SHIFTED,
-    DT_PANEL_BASHED,
-    DT_PANEL_BASHED2,
+    DT_PANEL_OPENED,
+    DT_PANEL_DAMAGED,
+    DT_PANEL_OPENED_DAMAGED,
     DT_PANEL_MISSING
 };
 
@@ -91,7 +89,6 @@ enum eWheelPosition
     REAR_RIGHT_WHEEL,
 
     MAX_WHEELS
-
 };
 
 enum ePanels
@@ -124,25 +121,68 @@ enum eLights
     MAX_LIGHTS            // MUST BE 16 OR LESS
 };
 
+enum class eCarNodes
+{
+    NONE = 0,
+    CHASSIS,
+    WHEEL_RF,
+    WHEEL_RM,
+    WHEEL_RB,
+    WHEEL_LF,
+    WHEEL_LM,
+    WHEEL_LB,
+    DOOR_RF,
+    DOOR_RR,
+    DOOR_LF,
+    DOOR_LR,
+    BUMP_FRONT,
+    BUMP_REAR,
+    WING_RF,
+    WING_LF,
+    BONNET,
+    BOOT,
+    WINDSCREEN,
+    EXHAUST,
+    MISC_A,
+    MISC_B,
+    MISC_C,
+    MISC_D,
+    MISC_E,
+
+    NUM_NODES
+};
+
+enum class eCarComponentCollisionTypes
+{
+    COL_NODE_BUMPER = 0,
+    COL_NODE_WHEEL,
+    COL_NODE_DOOR,
+    COL_NODE_BONNET,
+    COL_NODE_BOOT,
+    COL_NODE_PANEL,
+
+    COL_NODES_NUM
+};
+
 class CDamageManager
 {
 public:
     virtual BYTE          GetEngineStatus() = 0;
-    virtual VOID          SetEngineStatus(BYTE bEngineState) = 0;
+    virtual void          SetEngineStatus(BYTE bEngineState) = 0;
     virtual BYTE          GetDoorStatus(eDoors bDoor) = 0;
-    virtual VOID          SetDoorStatus(eDoors bDoor, BYTE bDoorStatus, bool spawnFlyingComponent) = 0;
+    virtual void          SetDoorStatus(eDoors bDoor, BYTE bDoorStatus, bool spawnFlyingComponent) = 0;
     virtual BYTE          GetWheelStatus(eWheelPosition bTire) = 0;
-    virtual VOID          SetWheelStatus(eWheelPosition bTire, BYTE bTireStatus) = 0;
-    virtual BYTE          GetPanelStatus(BYTE bPanel) = 0;
+    virtual void          SetWheelStatus(eWheelPosition bTire, BYTE bTireStatus) = 0;
+    virtual BYTE          GetPanelStatus(BYTE bPanel) const = 0;
     virtual unsigned long GetPanelStatus() = 0;
-    virtual VOID          SetPanelStatus(BYTE bPanel, BYTE bPanelStatus) = 0;
-    virtual void          SetPanelStatus(unsigned long ulStatus) = 0;
+    virtual void          SetPanelStatus(BYTE bPanel, BYTE bPanelStatus, bool spawnFlyingComponent = true, bool breakGlass = false) = 0;
+    virtual void          SetPanelStatus(unsigned long ulStatus, bool spawnFlyingComponent = true, bool breakGlass = false) = 0;
     virtual BYTE          GetLightStatus(BYTE bLight) = 0;
     virtual unsigned char GetLightStatus() = 0;
-    virtual VOID          SetLightStatus(BYTE bLight, BYTE bLightStatus) = 0;
+    virtual void          SetLightStatus(BYTE bLight, BYTE bLightStatus) = 0;
     virtual void          SetLightStatus(unsigned char ucStatus) = 0;
     virtual BYTE          GetAeroplaneCompStatus(BYTE CompID) = 0;
-    virtual VOID          SetAeroplaneCompStatus(BYTE CompID, BYTE Status) = 0;            // component ids begin at 12 - probably
+    virtual void          SetAeroplaneCompStatus(BYTE CompID, BYTE Status) = 0;            // component ids begin at 12 - probably
 
-    virtual VOID FuckCarCompletely(BOOL bKeepWheels) = 0;
+    virtual void FuckCarCompletely(bool bKeepWheels) = 0;
 };

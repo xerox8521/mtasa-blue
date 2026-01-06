@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CAccountManager.h
  *  PURPOSE:     User account manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -14,6 +14,11 @@ class CAccountManager;
 #pragma once
 
 #include "CAccount.h"
+#include "CConnectHistory.h"
+
+class CDbJobData;
+class CDatabaseManager;
+
 typedef uint SDbConnectionId;
 
 #define GUEST_ACCOUNT_NAME          "guest"

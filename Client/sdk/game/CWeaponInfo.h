@@ -5,16 +5,17 @@
  *  FILE:        sdk/game/CWeaponInfo.h
  *  PURPOSE:     Weapon entity information interface
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
 #include "Common.h"
-#include <CVector.h>
 
-enum eWeaponSkill
+class CVector;
+
+enum eWeaponSkill : std::uint8_t
 {
     WEAPONSKILL_POOR = 0,
     WEAPONSKILL_STD,
@@ -244,11 +245,11 @@ public:
     virtual float GetRequiredStatLevel() = 0;
     virtual void  SetRequiredStatLevel(float fStatLevel) = 0;
 
-    virtual void  SetFlags(int flags) = 0;
-    virtual void  SetFlag(DWORD flag) = 0;
-    virtual void  ClearFlag(DWORD flag) = 0;
-    virtual bool  IsFlagSet(DWORD flag) = 0;
-    virtual short GetFlags() = 0;
+    virtual void SetFlags(int flags) = 0;
+    virtual void SetFlag(DWORD flag) = 0;
+    virtual void ClearFlag(DWORD flag) = 0;
+    virtual bool IsFlagSet(DWORD flag) = 0;
+    virtual int  GetFlags() = 0;
 
     virtual DWORD GetAnimGroup() = 0;
     virtual void  SetAnimGroup(DWORD dwAnimGroup) = 0;

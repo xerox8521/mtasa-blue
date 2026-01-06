@@ -5,11 +5,14 @@
  *  FILE:        mods/deathmatch/logic/CDummy.cpp
  *  PURPOSE:     Dummy entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CDummy.h"
+#include "CGroups.h"
+#include "CGame.h"
 
 CDummy::CDummy(CGroups* pGroups, CElement* pParent) : CElement(pParent)
 {

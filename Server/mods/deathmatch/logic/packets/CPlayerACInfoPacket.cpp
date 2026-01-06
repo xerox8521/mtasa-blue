@@ -5,11 +5,12 @@
  *  FILE:        mods/deathmatch/logic/packets/CPlayerACInfoPacket.cpp
  *  PURPOSE:
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPlayerACInfoPacket.h"
 
 bool CPlayerACInfoPacket::Read(NetBitStreamInterface& BitStream)
 {

@@ -5,11 +5,12 @@
  *  FILE:        mods/deathmatch/logic/CEvents.cpp
  *  PURPOSE:     Event manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CEvents.h"
 
 CEvents::CEvents()
 {
@@ -22,16 +23,28 @@ bool CEvents::AddEvent(const char* szName, const char* szArguments, CLuaMain* pL
     assert(szName);
     assert(szArguments);
 
-    // If it already exists, return
-    if (Get(szName))
-        return false;
+    // Get the event if it already exists
+    SEvent* pEvent = Get(szName);
 
-    // Create and add the event
-    SEvent* pEvent = new SEvent;
-    pEvent->strName = szName;
-    pEvent->strArguments = szArguments;
-    pEvent->pLuaMain = pLuaMain;
-    pEvent->bAllowRemoteTrigger = bAllowRemoteTrigger;
+    if (pEvent)
+    {
+        // If bAllowRemoteTrigger has been altered, return
+        if (pEvent->bAllowRemoteTrigger != bAllowRemoteTrigger)
+            return false;
+
+        // Add pLuaMain to the vector, in case it's not already there
+        if (!ListContains(pEvent->pLuaMainVector, pLuaMain))
+            pEvent->pLuaMainVector.push_back(pLuaMain);
+    }
+    else
+    {
+        // Create and add the event
+        pEvent = new SEvent;
+        pEvent->strName = szName;
+        pEvent->strArguments = szArguments;
+        pEvent->pLuaMainVector.push_back(pLuaMain);
+        pEvent->bAllowRemoteTrigger = bAllowRemoteTrigger;
+    }
 
     m_EventHashMap[szName] = pEvent;
 
@@ -68,17 +81,19 @@ void CEvents::RemoveAllEvents(class CLuaMain* pMain)
     while (iter != m_EventHashMap.end())
     {
         SEvent* pEvent = (*iter).second;
-        // If they match, delete it null it and set the bool
-        if (pEvent->pLuaMain == pMain)
+        ListRemoveFirst(pEvent->pLuaMainVector, pMain);
+
+        // If no pMain is left, delete it null it and set the bool
+        if (pEvent->pLuaMainVector.empty())
         {
             // Delete the object
             delete pEvent;
 
             // Remove from list
-            m_EventHashMap.erase(iter++);
+            m_EventHashMap.erase(iter);
         }
-        else
-            ++iter;
+
+        ++iter;
     }
 }
 
@@ -108,38 +123,68 @@ void CEvents::RemoveAllEvents()
     m_EventHashMap.clear();
 }
 
-void CEvents::PreEventPulse()
+void CEvents::PreEventPulse(CEventContext* pContext)
 {
+    assert(pContext);
+
     m_CancelledList.push_back(m_bEventCancelled);
+    m_ContextStack.push_back(pContext);
+
+    pContext->Reset();
+
     m_bEventCancelled = false;
     m_bWasEventCancelled = false;
     m_strLastError = "";
 }
 
-void CEvents::PostEventPulse()
+void CEvents::PostEventPulse(CEventContext* pContext)
 {
-    m_bWasEventCancelled = m_bEventCancelled;
+    assert(pContext);
+    assert(!m_ContextStack.empty());
+    assert(m_ContextStack.back() == pContext);
+
+    m_bWasEventCancelled = pContext->IsCancelled();
     m_bEventCancelled = m_CancelledList.back() ? true : false;
     m_CancelledList.pop_back();
+    m_ContextStack.pop_back();
 }
 
 void CEvents::CancelEvent(bool bCancelled)
 {
-    m_bEventCancelled = bCancelled;
+    CancelEvent(bCancelled, nullptr);
 }
 
 void CEvents::CancelEvent(bool bCancelled, const char* szReason)
 {
+    // ALWAYS set the old global variable for backward compatibility
     m_bEventCancelled = bCancelled;
-    m_strLastError = SStringX(szReason);
+    
+    // Also update context if it exists
+    if (!m_ContextStack.empty())
+    {
+        CEventContext* pCurrentContext = m_ContextStack.back();
+        if (bCancelled)
+            pCurrentContext->Cancel(szReason);
+        else
+            pCurrentContext->Reset();
+    }
+    
+    if (szReason)
+        m_strLastError = szReason;
 }
 
 bool CEvents::WasEventCancelled()
 {
-    return m_bWasEventCancelled;
+    if (!m_ContextStack.empty())
+        return m_ContextStack.back()->IsCancelled();
+    
+    return m_bEventCancelled || m_bWasEventCancelled;
 }
 
 const char* CEvents::GetLastError()
 {
+    if (!m_ContextStack.empty())
+        return m_ContextStack.back()->GetCancelReason().c_str();
+
     return m_strLastError;
 }

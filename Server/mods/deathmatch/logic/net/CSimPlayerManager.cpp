@@ -3,7 +3,7 @@
  *  PROJECT:     Multi Theft Auto v1.0
  *  LICENSE:     See LICENSE in the top level directory
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -130,12 +130,13 @@ void CSimPlayerManager::UpdateSimPlayer(CPlayer* pPlayer)
     pSim->m_bIsJoined = pPlayer->IsJoined();
     pSim->m_usBitStreamVersion = pPlayer->GetBitStreamVersion();
     pSim->m_bHasOccupiedVehicle = pVehicle != NULL;
+    pSim->m_bIsExitingVehicle = pPlayer->GetVehicleAction() == CPed::VEHICLEACTION_EXITING;
     pSim->m_PlayerID = pPlayer->GetID();
-    pSim->m_usLatency = pPlayer->GetPing();
+    pSim->m_usLatency = static_cast<unsigned short>(pPlayer->GetPing());
     pSim->m_ucWeaponType = pPlayer->GetWeaponType();
     pSim->m_usVehicleModel = pVehicle ? pVehicle->GetModel() : 0;
     pSim->m_ucSyncTimeContext = pPlayer->GetSyncTimeContext();
-    pSim->m_ucOccupiedVehicleSeat = pPlayer->GetOccupiedVehicleSeat();
+    pSim->m_ucOccupiedVehicleSeat = static_cast<unsigned char>(pPlayer->GetOccupiedVehicleSeat());
     pSim->m_fWeaponRange = pPlayer->GetWeaponRangeFromSlot();
     pSim->m_bVehicleHasHydraulics = pVehicle ? pVehicle->GetUpgrades()->HasUpgrade(1087) : false;
     pSim->m_bVehicleIsPlaneOrHeli = pVehicle ? pVehicle->GetVehicleType() == VEHICLE_PLANE || pVehicle->GetVehicleType() == VEHICLE_HELI : false;
@@ -233,7 +234,7 @@ bool CSimPlayerManager::HandlePlayerPureSync(const NetServerPlayerID& Socket, Ne
     CSimPlayer* pSourceSimPlayer = Get(Socket);
 
     // Check is good for player pure sync
-    if (pSourceSimPlayer && pSourceSimPlayer->IsJoined() && !pSourceSimPlayer->m_bHasOccupiedVehicle)
+    if (pSourceSimPlayer && pSourceSimPlayer->IsJoined() && (!pSourceSimPlayer->m_bHasOccupiedVehicle || pSourceSimPlayer->m_bIsExitingVehicle))
     {
         // Read the incoming packet data
         CSimPlayerPuresyncPacket* pPacket =
@@ -331,38 +332,34 @@ bool CSimPlayerManager::HandleKeySync(const NetServerPlayerID& Socket, NetBitStr
     return true;
 }
 
-///////////////////////////////////////////////////////////////
-//
-// CSimPlayerManager::HandleBulletSync
-//
-// Thread:              sync
-// CS should be locked: no
-//
-///////////////////////////////////////////////////////////////
-bool CSimPlayerManager::HandleBulletSync(const NetServerPlayerID& Socket, NetBitStreamInterface* BitStream)
+bool CSimPlayerManager::HandleBulletSync(const NetServerPlayerID& socket, NetBitStreamInterface* stream)
 {
     if (!CNetBufferWatchDog::CanSendPacket(PACKET_ID_PLAYER_BULLETSYNC))
         return true;
 
-    LockSimSystem();            // Prevent player additions and deletions
+    LockSimSystem();
 
-    // Grab the source player
-    CSimPlayer* pSourceSimPlayer = Get(Socket);
-
-    // Check is good for bullet sync
-    if (pSourceSimPlayer && pSourceSimPlayer->IsJoined())
+    auto* player = Get(socket);
+    if (!player || !player->IsJoined())
     {
-        // Read the incoming packet data
-        CSimBulletsyncPacket* pPacket = new CSimBulletsyncPacket(pSourceSimPlayer->m_PlayerID);
-
-        if (pPacket->Read(*BitStream))
-        {
-            // Relay it to nearbyers
-            Broadcast(*pPacket, pSourceSimPlayer->GetPuresyncSendList());
-        }
-
-        delete pPacket;
+        UnlockSimSystem();
+        return true;
     }
+
+    auto packet = std::make_unique<CSimBulletsyncPacket>(player->m_PlayerID);
+    if (!packet->Read(*stream))
+    {
+        UnlockSimSystem();
+        return true;
+    }
+
+    if (!player->m_pRealPlayer->HasWeaponType(packet->m_cache.weapon))
+    {
+        UnlockSimSystem();
+        return true;
+    }
+
+    Broadcast(*packet, player->GetPuresyncSendList());
 
     UnlockSimSystem();
     return true;
@@ -487,19 +484,19 @@ void CSimPlayerManager::Broadcast(const CSimPacket& Packet, const std::multimap<
         if (Packet.Write(*pBitStream))
         {
             // For each player, send the packet
-            const pair<mapIter, mapIter> keyRange = groupMap.equal_range(usBitStreamVersion);
+            const std::pair<mapIter, mapIter> keyRange = groupMap.equal_range(usBitStreamVersion);
             for (s_it = keyRange.first; s_it != keyRange.second; ++s_it)
             {
                 CSimPlayer* pPlayer = s_it->second;
                 dassert(usBitStreamVersion == pPlayer->GetBitStreamVersion());
-                g_pRealNetServer->SendPacket(Packet.GetPacketID(), pPlayer->GetSocket(), pBitStream, FALSE, packetPriority, Reliability,
+                g_pRealNetServer->SendPacket(Packet.GetPacketID(), pPlayer->GetSocket(), pBitStream, false, packetPriority, Reliability,
                                              Packet.GetPacketOrdering());
             }
         }
         else
         {
             // Skip
-            const pair<mapIter, mapIter> keyRange = groupMap.equal_range(usBitStreamVersion);
+            const std::pair<mapIter, mapIter> keyRange = groupMap.equal_range(usBitStreamVersion);
             for (s_it = keyRange.first; s_it != keyRange.second; ++s_it)
             {
             }

@@ -5,11 +5,17 @@
  *  FILE:        mods/deathmatch/logic/CObject.cpp
  *  PURPOSE:     Object entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CObject.h"
+#include "CLogger.h"
+#include "Utils.h"
+#include "CGame.h"
+#include "packets/CElementRPCPacket.h"
+#include <net/rpc_enums.h>
 
 extern CGame* g_pGame;
 
@@ -30,6 +36,7 @@ CObject::CObject(CElement* pParent, CObjectManager* pObjectManager, bool bIsLowL
     m_bIsFrozen = false;
     m_bDoubleSided = false;
     m_bBreakable = false;
+    m_bRespawnable = true;
 
     m_bCollisionsEnabled = true;
 
@@ -55,6 +62,7 @@ CObject::CObject(const CObject& Copy) : CElement(Copy.m_pParent), m_bIsLowLod(Co
     m_bBreakable = Copy.m_bBreakable;
     m_vecPosition = Copy.m_vecPosition;
     m_vecRotation = Copy.m_vecRotation;
+    m_bRespawnable = Copy.m_bRespawnable;
 
     m_pMoveAnimation = NULL;
     if (Copy.m_pMoveAnimation != NULL)
@@ -181,6 +189,9 @@ bool CObject::ReadSpecialData(const int iLine)
 
     GetCustomDataBool("frozen", m_bIsFrozen, true);
 
+    if (!GetCustomDataBool("breakable", m_bBreakable, true))
+        m_bBreakable = CObjectManager::IsBreakableModel(m_usModel);
+
     return true;
 }
 
@@ -263,12 +274,12 @@ void CObject::SetPosition(const CVector& vecPosition)
 
 void CObject::GetRotation(CVector& vecRotation)
 {
-    vecRotation = m_vecRotation;
-
     // Are we attached to something?
     if (m_pAttachedTo)
+    {
+        vecRotation = m_vecRotation;
         GetAttachedRotation(vecRotation);
-
+    }
     // Are we moving?
     else if (IsMoving())
     {
@@ -279,6 +290,11 @@ void CObject::GetRotation(CVector& vecRotation)
         {
             StopMoving();
         }
+        vecRotation = m_vecRotation;
+    }
+    else
+    {
+        // Not moving and not attached, return stored rotation
         vecRotation = m_vecRotation;
     }
 }
@@ -344,8 +360,7 @@ void CObject::Move(const CPositionRotationAnimation& a_rMoveAnimation)
 
 void CObject::StopMoving()
 {
-    // Were we moving in the first place
-    if (m_pMoveAnimation != NULL)
+    if (m_pMoveAnimation != nullptr)
     {
         SPositionRotation positionRotation;
         m_pMoveAnimation->GetValue(positionRotation);
@@ -353,9 +368,10 @@ void CObject::StopMoving()
         m_vecRotation = positionRotation.m_vecRotation;
 
         delete m_pMoveAnimation;
-        m_pMoveAnimation = NULL;
+        m_pMoveAnimation = nullptr;
 
         UpdateSpatialData();
+        NotifyMovementComplete();
     }
 }
 
@@ -367,7 +383,7 @@ const CPositionRotationAnimation* CObject::GetMoveAnimation()
     }
     else
     {
-        return NULL;
+        return nullptr;
     }
 }
 
@@ -419,7 +435,7 @@ bool CObject::SetLowLodObject(CObject* pNewLowLodObject)
 
         // Clear there and here
         ListRemove(m_pLowLodObject->m_HighLodObjectList, this);
-        m_pLowLodObject = NULL;
+        m_pLowLodObject = nullptr;
         return true;
     }
     else
@@ -429,7 +445,7 @@ bool CObject::SetLowLodObject(CObject* pNewLowLodObject)
             return false;
 
         // Remove any previous link
-        SetLowLodObject(NULL);
+        SetLowLodObject(nullptr);
 
         // Make new link
         m_pLowLodObject = pNewLowLodObject;
@@ -441,6 +457,18 @@ bool CObject::SetLowLodObject(CObject* pNewLowLodObject)
 CObject* CObject::GetLowLodObject()
 {
     if (m_bIsLowLod)
-        return NULL;
+        return nullptr;
     return m_pLowLodObject;
+}
+
+void CObject::NotifyMovementComplete()
+{
+    CBitStream BitStream;
+    BitStream.pBitStream->Write(m_vecPosition.fX);
+    BitStream.pBitStream->Write(m_vecPosition.fY);
+    BitStream.pBitStream->Write(m_vecPosition.fZ);
+    BitStream.pBitStream->Write(m_vecRotation.fX);
+    BitStream.pBitStream->Write(m_vecRotation.fY);
+    BitStream.pBitStream->Write(m_vecRotation.fZ);
+    g_pGame->GetPlayerManager()->BroadcastOnlyJoined(CElementRPCPacket(this, STOP_OBJECT, *BitStream.pBitStream));
 }

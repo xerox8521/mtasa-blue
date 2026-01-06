@@ -5,7 +5,7 @@
  *  FILE:        xml/CXMLImpl.cpp
  *  PURPOSE:     XML handler class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -50,14 +50,21 @@ std::unique_ptr<SXMLString> CXMLImpl::ParseString(const char* strXmlContent)
         if (!xmlDoc->Error())
         {
             TiXmlElement* xmlDocumentRoot = xmlDoc->RootElement();
-            CXMLNodeImpl* xmlBaseNode = new CXMLNodeImpl(nullptr, nullptr, *xmlDocumentRoot);
-            xmlBaseNode->BuildFromDocument();
-            return std::unique_ptr<SXMLString>(new SXMLStringImpl(xmlDoc, xmlBaseNode));
+
+            if (xmlDocumentRoot)
+            {
+                CXMLNodeImpl* xmlBaseNode = new CXMLNodeImpl(nullptr, nullptr, *xmlDocumentRoot);
+
+                if (xmlBaseNode && xmlBaseNode->IsValid())
+                {
+                    xmlBaseNode->BuildFromDocument();
+                    return std::unique_ptr<SXMLString>(new SXMLStringImpl(xmlDoc, xmlBaseNode));
+                }
+            }
         }
     }
     return nullptr;
 }
-
 
 CXMLNode* CXMLImpl::CreateDummyNode()
 {

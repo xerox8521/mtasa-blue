@@ -4,7 +4,7 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        mods/deathmatch/logic/packets/CServerInfoSyncPacket.h
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -31,7 +31,8 @@ public:
     bool Write(NetBitStreamInterface& BitStream) const;
 
 private:
-    union {
+    union
+    {
         uint8 m_ActualInfo;
         struct
         {

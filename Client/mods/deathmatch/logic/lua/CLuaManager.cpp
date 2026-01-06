@@ -5,13 +5,15 @@
  *  FILE:        mods/shared_logic/logic/lua/CLuaManager.cpp
  *  PURPOSE:     Lua virtual machine manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
 #include "../luadefs/CLuaFireDefs.h"
 #include "../luadefs/CLuaClientDefs.h"
+#include "../luadefs/CLuaVectorGraphicDefs.h"
+#include "../luadefs/CLuaPostfxDefs.h"
 
 using std::list;
 
@@ -170,8 +172,6 @@ void CLuaManager::LoadCFunctions()
         // Output funcs
         {"outputConsole", CLuaFunctionDefs::OutputConsole},
         {"outputChatBox", CLuaFunctionDefs::OutputChatBox},
-        {"showChat", CLuaFunctionDefs::ShowChat},
-        {"isChatVisible", CLuaFunctionDefs::IsChatVisible},
         {"outputDebugString", CLuaFunctionDefs::OutputClientDebugString},
         {"setClipboard", CLuaFunctionDefs::SetClipboard},
         {"setWindowFlashing", CLuaFunctionDefs::SetWindowFlashing},
@@ -186,6 +186,8 @@ void CLuaManager::LoadCFunctions()
         {"getClothesByTypeIndex", CLuaFunctionDefs::GetClothesByTypeIndex},
         {"getTypeIndexFromClothes", CLuaFunctionDefs::GetTypeIndexFromClothes},
         {"getClothesTypeName", CLuaFunctionDefs::GetClothesTypeName},
+        {"addClothingModel", CLuaFunctionDefs::AddClothingModel},
+        {"removeClothingModel", CLuaFunctionDefs::RemoveClothingModel},
 
         // Cursor funcs
         {"getCursorPosition", CLuaFunctionDefs::GetCursorPosition},
@@ -273,10 +275,14 @@ void CLuaManager::LoadCFunctions()
     CLuaTaskDefs::LoadFunctions();
     CLuaTeamDefs::LoadFunctions();
     CLuaTimerDefs::LoadFunctions();
+    CLuaVectorGraphicDefs::LoadFunctions();
     CLuaVehicleDefs::LoadFunctions();
     CLuaWaterDefs::LoadFunctions();
     CLuaWeaponDefs::LoadFunctions();
     CLuaWorldDefs::LoadFunctions();
     CLuaXMLDefs::LoadFunctions();
     CLuaClientDefs::LoadFunctions();
+    CLuaDiscordDefs::LoadFunctions();
+    CLuaBuildingDefs::LoadFunctions();
+    CLuaPostfxDefs::LoadFunctions();
 }

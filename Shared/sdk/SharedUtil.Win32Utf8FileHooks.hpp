@@ -5,7 +5,7 @@
  *  FILE:        SharedUtil.Win32Utf8FileHooks.hpp
  *  PURPOSE:     Hooks for making Windows file functions use UTF8 strings
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -46,6 +46,28 @@ BUT
             and many more...
 */
 
+#ifdef UTF8_FILE_HOOKS_PERSONALITY_Core
+    #include <filesystem>
+
+extern std::filesystem::path g_gtaDirectory;
+
+/**
+ * @brief Converts a filesystem path to a string encoded with the active code page.
+ * @param path Path to convert to a string
+ */
+auto ToACP(const std::filesystem::path& path) -> std::string
+{
+    if (path.empty())
+        return {};
+
+    const std::wstring widePath = path.wstring();
+    const int          narrowLength = WideCharToMultiByte(CP_ACP, 0, widePath.data(), static_cast<int>(widePath.size()), nullptr, 0, nullptr, nullptr);
+    std::string        narrowPath(narrowLength, 0);
+    WideCharToMultiByte(CP_ACP, 0, widePath.data(), static_cast<int>(widePath.size()), narrowPath.data(), narrowLength, nullptr, nullptr);
+    return narrowPath;
+}
+#endif
+
 namespace SharedUtil
 {
     /////////////////////////////////////////////////////////////
@@ -83,6 +105,16 @@ namespace SharedUtil
     /////////////////////////////////////////////////////////////
     SString MakeSurePathIsUTF8(const SString& strOriginal)
     {
+    #ifdef UTF8_FILE_HOOKS_PERSONALITY_Core
+        static SString gtaDirCP = ToACP(g_gtaDirectory);
+        static SString gtaDirUTF8 = UTF8FilePath(g_gtaDirectory);
+        if (strOriginal.BeginsWithI(gtaDirCP))
+        {
+            SString tail = strOriginal.SubStr(gtaDirCP.length());
+            return PathJoin(gtaDirUTF8, tail);
+        }
+    #endif
+
         static SString strLaunchPathCP, strLaunchPathUTF8;
         if (strLaunchPathCP.empty())
         {

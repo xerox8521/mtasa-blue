@@ -158,7 +158,6 @@ CClientEntity::~CClientEntity()
     if (!g_pClientGame->IsBeingDeleted())
         CClientEntityRefManager::OnEntityDelete(this);
 
-    SAFE_RELEASE(m_pChildrenListSnapshot);
     g_pCore->GetGraphics()->GetRenderItemManager()->RemoveClientEntityRefs(this);
     g_pCore->UpdateDummyProgress();
 }
@@ -280,12 +279,12 @@ void CClientEntity::SetID(ElementID ID)
     }
 }
 
-CLuaArgument* CClientEntity::GetCustomData(const char* szName, bool bInheritData, bool* pbIsSynced)
+CLuaArgument* CClientEntity::GetCustomData(const CStringName& name, bool bInheritData, bool* pbIsSynced)
 {
-    assert(szName);
+    assert(name);
 
     // Grab it and return a pointer to the variable
-    SCustomData* pData = m_pCustomData->Get(szName);
+    SCustomData* pData = m_pCustomData->Get(name);
     if (pData)
     {
         if (pbIsSynced)
@@ -296,17 +295,30 @@ CLuaArgument* CClientEntity::GetCustomData(const char* szName, bool bInheritData
     // If none, try returning parent's custom data
     if (bInheritData && m_pParent)
     {
-        return m_pParent->GetCustomData(szName, true, pbIsSynced);
+        return m_pParent->GetCustomData(name, true, pbIsSynced);
     }
 
     // None available
     return NULL;
 }
 
-bool CClientEntity::GetCustomDataString(const char* szName, SString& strOut, bool bInheritData)
+CLuaArguments* CClientEntity::GetAllCustomData(CLuaArguments* table)
+{
+    assert(table);
+
+    for (auto it = m_pCustomData->IterBegin(); it != m_pCustomData->IterEnd(); it++)
+    {
+        table->PushString(it->first);                        // key
+        table->PushArgument(it->second.Variable);            // value
+    }
+
+    return table;
+}
+
+bool CClientEntity::GetCustomDataString(const CStringName& name, SString& strOut, bool bInheritData)
 {
     // Grab the custom data variable
-    CLuaArgument* pData = GetCustomData(szName, bInheritData);
+    CLuaArgument* pData = GetCustomData(name, bInheritData);
     if (pData)
     {
         // Write the content depending on what type it is
@@ -338,10 +350,10 @@ bool CClientEntity::GetCustomDataString(const char* szName, SString& strOut, boo
     return false;
 }
 
-bool CClientEntity::GetCustomDataInt(const char* szName, int& iOut, bool bInheritData)
+bool CClientEntity::GetCustomDataInt(const CStringName& name, int& iOut, bool bInheritData)
 {
     // Grab the custom data variable
-    CLuaArgument* pData = GetCustomData(szName, bInheritData);
+    CLuaArgument* pData = GetCustomData(name, bInheritData);
     if (pData)
     {
         // Write the content depending on what type it is
@@ -376,10 +388,10 @@ bool CClientEntity::GetCustomDataInt(const char* szName, int& iOut, bool bInheri
     return false;
 }
 
-bool CClientEntity::GetCustomDataFloat(const char* szName, float& fOut, bool bInheritData)
+bool CClientEntity::GetCustomDataFloat(const CStringName& name, float& fOut, bool bInheritData)
 {
     // Grab the custom data variable
-    CLuaArgument* pData = GetCustomData(szName, bInheritData);
+    CLuaArgument* pData = GetCustomData(name, bInheritData);
     if (pData)
     {
         // Write the content depending on what type it is
@@ -403,10 +415,10 @@ bool CClientEntity::GetCustomDataFloat(const char* szName, float& fOut, bool bIn
     return false;
 }
 
-bool CClientEntity::GetCustomDataBool(const char* szName, bool& bOut, bool bInheritData)
+bool CClientEntity::GetCustomDataBool(const CStringName& name, bool& bOut, bool bInheritData)
 {
     // Grab the custom data variable
-    CLuaArgument* pData = GetCustomData(szName, bInheritData);
+    CLuaArgument* pData = GetCustomData(name, bInheritData);
     if (pData)
     {
         // Write the content depending on what type it is
@@ -458,50 +470,50 @@ bool CClientEntity::GetCustomDataBool(const char* szName, bool& bOut, bool bInhe
     return false;
 }
 
-void CClientEntity::SetCustomData(const char* szName, const CLuaArgument& Variable, bool bSynchronized)
+void CClientEntity::SetCustomData(const CStringName& name, const CLuaArgument& Variable, bool bSynchronized)
 {
-    assert(szName);
-    if (strlen(szName) > MAX_CUSTOMDATA_NAME_LENGTH)
+    assert(name);
+    if (name->length() > MAX_CUSTOMDATA_NAME_LENGTH)
     {
         // Don't allow it to be set if the name is too long
-        CLogger::ErrorPrintf("Custom data name too long (%s)", *SStringX(szName).Left(MAX_CUSTOMDATA_NAME_LENGTH + 1));
+        CLogger::ErrorPrintf("Custom data name too long (%s)", *SStringX(name.ToCString()).Left(MAX_CUSTOMDATA_NAME_LENGTH + 1));
         return;
     }
 
     // Grab the old variable
     CLuaArgument oldVariable;
-    SCustomData* pData = m_pCustomData->Get(szName);
+    SCustomData* pData = m_pCustomData->Get(name);
     if (pData)
     {
         oldVariable = pData->Variable;
     }
 
     // Set the new data
-    m_pCustomData->Set(szName, Variable, bSynchronized);
+    m_pCustomData->Set(name, Variable, bSynchronized);
 
     // Trigger the onClientElementDataChange event on us
     CLuaArguments Arguments;
-    Arguments.PushString(szName);
+    Arguments.PushString(name);
     Arguments.PushArgument(oldVariable);
     Arguments.PushArgument(Variable);
     CallEvent("onClientElementDataChange", Arguments, true);
 }
 
-void CClientEntity::DeleteCustomData(const char* szName)
+void CClientEntity::DeleteCustomData(const CStringName& name)
 {
     // Grab the old variable
-    SCustomData* pData = m_pCustomData->Get(szName);
+    SCustomData* pData = m_pCustomData->Get(name);
     if (pData)
     {
         CLuaArgument oldVariable;
         oldVariable = pData->Variable;
 
         // Delete the custom data
-        m_pCustomData->Delete(szName);
+        m_pCustomData->Delete(name);
 
         // Trigger the onClientElementDataChange event on us
         CLuaArguments Arguments;
-        Arguments.PushString(szName);
+        Arguments.PushString(name);
         Arguments.PushArgument(oldVariable);
         Arguments.PushArgument(CLuaArgument());            // Use nil as the new value to indicate the data has been removed
         CallEvent("onClientElementDataChange", Arguments, true);
@@ -779,11 +791,9 @@ void CClientEntity::CallEventNoParent(const char* szName, const CLuaArguments& A
     // Call it on all our children
     if (!m_Children.empty())
     {
-        CElementListSnapshot* pList = GetChildrenListSnapshot();
-        pList->AddRef();            // Keep list alive during use
-        for (CElementListSnapshot::const_iterator iter = pList->begin(); iter != pList->end(); iter++)
+        CElementListSnapshotRef pChildrenSnapshot = GetChildrenListSnapshot();
+		for (CClientEntity* pEntity : *pChildrenSnapshot)
         {
-            CClientEntity* pEntity = *iter;
             if (!pEntity->IsBeingDeleted())
             {
                 if (!pEntity->m_pEventManager || pEntity->m_pEventManager->HasEvents() || !pEntity->m_Children.empty())
@@ -794,7 +804,6 @@ void CClientEntity::CallEventNoParent(const char* szName, const CLuaArguments& A
                 }
             }
         }
-        pList->Release();
     }
 }
 
@@ -1096,7 +1105,7 @@ bool CClientEntity::IsAttachedToElement(CClientEntity* pEntity, bool bRecursive)
                 return true;
 
             if (!std::get<bool>(history.insert(pCurrent)))
-                break; // This should not be possible, but you never know
+                break;            // This should not be possible, but you never know
         }
 
         return false;
@@ -1213,6 +1222,8 @@ unsigned int CClientEntity::GetTypeID(const char* szTypeName)
         return CCLIENTSOUND;
     else if (strcmp(szTypeName, "light") == 0)
         return CCLIENTPOINTLIGHTS;
+    else if (strcmp(szTypeName, "svg") == 0)
+        return CCLIENTVECTORGRAPHIC;
     else
         return CCLIENTUNKNOWN;
 }
@@ -1307,10 +1318,13 @@ void CClientEntity::SetInterior(unsigned char ucInterior)
     unsigned char ucOldInterior = m_ucInterior;
     m_ucInterior = ucInterior;
 
-    CLuaArguments Arguments;
-    Arguments.PushNumber(ucOldInterior);
-    Arguments.PushNumber(ucInterior);
-    CallEvent("onClientElementInteriorChange", Arguments, true);
+    if (ucOldInterior != ucInterior)
+    {
+        CLuaArguments Arguments;
+        Arguments.PushNumber(ucOldInterior);
+        Arguments.PushNumber(ucInterior);
+        CallEvent("onClientElementInteriorChange", Arguments, true);
+    }
 }
 
 bool CClientEntity::IsOnScreen()
@@ -1600,25 +1614,21 @@ float CClientEntity::GetDistanceBetweenBoundingSpheres(CClientEntity* pOther)
 //
 // Ensure children list snapshot is up to date and return it
 //
-CElementListSnapshot* CClientEntity::GetChildrenListSnapshot()
+CElementListSnapshotRef CClientEntity::GetChildrenListSnapshot()
 {
     // See if list needs updating
     if (m_Children.GetRevision() != m_uiChildrenListSnapshotRevision || m_pChildrenListSnapshot == NULL)
     {
         m_uiChildrenListSnapshotRevision = m_Children.GetRevision();
 
-        // Detach old
-        SAFE_RELEASE(m_pChildrenListSnapshot);
-
         // Make new
-        m_pChildrenListSnapshot = new CElementListSnapshot();
+        m_pChildrenListSnapshot = std::make_shared<CElementListSnapshot>();
 
         // Fill it up
         m_pChildrenListSnapshot->reserve(m_Children.size());
-        for (CChildListType::const_iterator iter = m_Children.begin(); iter != m_Children.end(); iter++)
-        {
+
+        for (auto iter = m_Children.begin(); iter != m_Children.end(); iter++)
             m_pChildrenListSnapshot->push_back(*iter);
-        }
     }
 
     return m_pChildrenListSnapshot;

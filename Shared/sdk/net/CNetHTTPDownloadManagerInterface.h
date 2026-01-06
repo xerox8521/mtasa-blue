@@ -5,7 +5,7 @@
  *  FILE:        sdk/net/CNetHTTPDownloadManagerInterface.h
  *  PURPOSE:     Network HTTP download interface
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -15,7 +15,6 @@
 #include <cassert>
 #include "SString.h"
 #include "SharedUtil.IntTypes.h"
-
 
 struct SHttpRequestOptions
 {
@@ -153,9 +152,9 @@ inline SHttpRequestOptionsTx::SHttpRequestOptionsTx(const SHttpRequestOptions& i
 
 struct SDownloadStatus
 {
-    uint uiAttemptNumber = 0;   // 0=Queued 1+=Downloading
-    uint uiContentLength = 0;   // Item total size. Will be 0 if http header 'Content-Length' is missing
-    uint uiBytesReceived = 0;   // Download progress
+    uint uiAttemptNumber = 0;            // 0=Queued 1+=Downloading
+    uint uiContentLength = 0;            // Item total size. Will be 0 if http header 'Content-Length' is missing
+    uint uiBytesReceived = 0;            // Download progress
 };
 
 // PFN_DOWNLOAD_FINISHED_CALLBACK is called once at the end of the download.

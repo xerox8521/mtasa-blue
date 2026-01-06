@@ -5,11 +5,21 @@
  *  FILE:        mods/deathmatch/logic/lua/CLuaArguments.cpp
  *  PURPOSE:     Lua argument manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLuaArguments.h"
+#include "CLuaMain.h"
+#include "CGame.h"
+#include "CScriptDebugging.h"
+#include "CPerfStatManager.h"
+#include "CDatabaseManager.h"
+#include "CBan.h"
+#include "CAccount.h"
+#include "CAccessControlList.h"
+#include "CAccessControlListGroup.h"
 
 #ifndef WIN32
 #include <clocale>
@@ -58,7 +68,7 @@ void CLuaArguments::CopyRecursive(const CLuaArguments& Arguments, CFastHashMap<C
     pKnownTables->insert(std::make_pair((CLuaArguments*)&Arguments, (CLuaArguments*)this));
 
     // Copy all the arguments
-    vector<CLuaArgument*>::const_iterator iter = Arguments.m_Arguments.begin();
+    std::vector<CLuaArgument*>::const_iterator iter = Arguments.m_Arguments.begin();
     for (; iter != Arguments.m_Arguments.end(); ++iter)
     {
         CLuaArgument* pArgument = new CLuaArgument(**iter, pKnownTables);
@@ -132,7 +142,7 @@ void CLuaArguments::ReadArgument(lua_State* luaVM, int iIndex)
 void CLuaArguments::PushArguments(lua_State* luaVM) const
 {
     // Push all our arguments
-    vector<CLuaArgument*>::const_iterator iter = m_Arguments.begin();
+    std::vector<CLuaArgument*>::const_iterator iter = m_Arguments.begin();
     for (; iter != m_Arguments.end(); ++iter)
     {
         (*iter)->Push(luaVM);
@@ -167,7 +177,7 @@ void CLuaArguments::PushAsTable(lua_State* luaVM, CFastHashMap<CLuaArguments*, i
     lua_pop(luaVM, 1);
     pKnownTables->insert(std::make_pair((CLuaArguments*)this, size));
 
-    vector<CLuaArgument*>::const_iterator iter = m_Arguments.begin();
+    std::vector<CLuaArgument*>::const_iterator iter = m_Arguments.begin();
     for (; iter != m_Arguments.end() && (iter + 1) != m_Arguments.end(); ++iter)
     {
         (*iter)->Push(luaVM, pKnownTables);            // index
@@ -187,11 +197,9 @@ void CLuaArguments::PushAsTable(lua_State* luaVM, CFastHashMap<CLuaArguments*, i
 
 void CLuaArguments::PushArguments(const CLuaArguments& Arguments)
 {
-    vector<CLuaArgument*>::const_iterator iter = Arguments.IterBegin();
-    for (; iter != Arguments.IterEnd(); ++iter)
+    for (CLuaArgument* argument : Arguments)
     {
-        CLuaArgument* pArgument = new CLuaArgument(**iter);
-        m_Arguments.push_back(pArgument);
+        m_Arguments.push_back(new CLuaArgument(*argument));
     }
 }
 
@@ -348,12 +356,36 @@ CLuaArgument* CLuaArguments::PushArgument(const CLuaArgument& argument)
     return pArgument;
 }
 
-CLuaArgument* CLuaArguments::PushString(const std::string& strString)
+CLuaArgument* CLuaArguments::PushString(const std::string& string)
 {
-    CLuaArgument* pArgument = new CLuaArgument();
-    pArgument->ReadString(strString);
-    m_Arguments.push_back(pArgument);
-    return pArgument;
+    CLuaArgument* arg = new CLuaArgument();
+    arg->ReadString(string);
+    m_Arguments.push_back(arg);
+    return arg;
+}
+
+CLuaArgument* CLuaArguments::PushString(const std::string_view& string)
+{
+    CLuaArgument* arg = new CLuaArgument();
+    arg->ReadString(string);
+    m_Arguments.push_back(arg);
+    return arg;
+}
+
+CLuaArgument* CLuaArguments::PushString(const CStringName& string)
+{
+    CLuaArgument* arg = new CLuaArgument();
+    arg->ReadString(string);
+    m_Arguments.push_back(arg);
+    return arg;
+}
+
+CLuaArgument* CLuaArguments::PushString(const char* string)
+{
+    CLuaArgument* arg = new CLuaArgument();
+    arg->ReadString(string);
+    m_Arguments.push_back(arg);
+    return arg;
 }
 
 CLuaArgument* CLuaArguments::PushElement(CElement* pElement)
@@ -599,49 +631,53 @@ json_object* CLuaArguments::WriteTableToJSONObject(bool bSerialize, CFastHashMap
         bKnownTablesCreated = true;
     }
 
-    pKnownTables->insert(std::make_pair(this, pKnownTables->size()));
+    pKnownTables->insert({this, pKnownTables->size()});
 
-    bool                                  bIsArray = true;
-    unsigned int                          iArrayPos = 1;            // lua arrays are 1 based
-    vector<CLuaArgument*>::const_iterator iter = m_Arguments.begin();
+    bool                                                 bIsArray = true;
+    std::vector<std::pair<std::uint32_t, CLuaArgument*>> vecSortedArguments;            // lua arrays are not necessarily sorted
+    std::vector<CLuaArgument*>::const_iterator           iter = m_Arguments.begin();
     for (; iter != m_Arguments.end(); iter += 2)
     {
         CLuaArgument* pArgument = *iter;
         if (pArgument->GetType() == LUA_TNUMBER)
         {
-            double       num = pArgument->GetNumber();
-            unsigned int iNum = static_cast<unsigned int>(num);
-            if (num == iNum)
-            {
-                if (iArrayPos != iNum)            // check if the value matches its index in the table
-                {
-                    bIsArray = false;
-                    break;
-                }
-            }
-            else
-            {
-                bIsArray = false;
-                break;
-            }
+            double const num = pArgument->GetNumber();
+            auto const   iNum = static_cast<std::uint32_t>(num);
+
+            vecSortedArguments.push_back({iNum, *(iter + 1)});
         }
         else
         {
             bIsArray = false;
             break;
         }
-        iArrayPos++;
     }
 
-    if (bIsArray)
+    if (bIsArray && !vecSortedArguments.empty())            // the table could possibly be an array
     {
-        json_object*                          my_array = json_object_new_array();
-        vector<CLuaArgument*>::const_iterator iter = m_Arguments.begin();
-        for (; iter != m_Arguments.end(); ++iter)
+        // sort the table based on the keys (already handled correctly by std::pair)
+        std::sort(vecSortedArguments.begin(), vecSortedArguments.end());
+
+        // only the first and last element are checked, everything else is correct by default because the vector was sorted
+        // the last key should match the size of vecSortedArguments to ensure there are no gaps in this array-like table
+        auto const iFirstKey = vecSortedArguments.front().first;
+        auto const iLastKey = vecSortedArguments.back().first;
+
+        auto const iFirstArrayPos = 1U;            // lua arrays are 1 based
+        auto const iLastArrayPos = static_cast<std::uint32_t>(vecSortedArguments.size());
+
+        if (iFirstKey != iFirstArrayPos || iLastKey != iLastArrayPos)
         {
-            iter++;            // skip the key values
-            CLuaArgument* pArgument = *iter;
-            json_object*  object = pArgument->WriteToJSONObject(bSerialize, pKnownTables);
+            bIsArray = false;
+        }
+    }
+
+    if (bIsArray)            // the table is definitely an array
+    {
+        json_object* my_array = json_object_new_array();
+        for (auto const& [iKey, pArgument] : vecSortedArguments)
+        {
+            json_object* object = pArgument->WriteToJSONObject(bSerialize, pKnownTables);
             if (object)
             {
                 json_object_array_add(my_array, object);

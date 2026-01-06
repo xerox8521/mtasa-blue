@@ -5,17 +5,17 @@
  *  FILE:        game_sa/TaskAttackSA.h
  *  PURPOSE:     Attack game tasks
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include <CVector2D.h>
 #include <game/TaskAttack.h>
-
 #include "TaskSA.h"
+
+class CWeaponInfo;
 
 #define FUNC_CTaskSimpleGangDriveBy__Constructor        0x6217d0
 #define FUNC_CTaskSimpleUseGun__Constructor             0x61de60

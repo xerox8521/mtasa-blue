@@ -5,14 +5,14 @@
  *  FILE:        mods/shared_logic/luadefs/CLuaGUIDefs.cpp
  *  PURPOSE:     Lua definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 #include "CLuaDefs.h"
 
-#define MAX_CHATBOX_LAYOUT_CVARS 20
+#define MAX_CHATBOX_LAYOUT_CVARS 21
 
 class CLuaGUIDefs : public CLuaDefs
 {
@@ -158,6 +158,9 @@ public:
     LUA_DECLARE(GUIComboBoxSetOpen);
     LUA_DECLARE(GUIComboBoxIsOpen);
     LUA_DECLARE(GUIGetCursorType);
+
+    static bool GUISetChatboxCharacterLimit(int charLimit);
+    static int  GUIGetChatboxCharacterLimit();
 
 private:
     static void AddGuiElementClass(lua_State* luaVM);

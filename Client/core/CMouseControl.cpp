@@ -5,7 +5,7 @@
  *  FILE:        core/CMouseControl.cpp
  *  PURPOSE:     Simulates the 'Fly with mouse' and 'Steer with mouse' controls
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -13,6 +13,11 @@
 #include "CMouseControl.h"
 #include <windowsx.h>
 #include <game/CGame.h>
+#include <game/CModelInfo.h>
+#include <game/CPed.h>
+#include <game/CPools.h>
+#include <game/CSettings.h>
+#include <game/CVehicle.h>
 
 #define MOUSE_CONTROL_MULTIPLIER    35
 
@@ -54,7 +59,7 @@ bool CMouseControl::ProcessMouseMove(UINT uMsg, WPARAM wParam, LPARAM lParam)
     if (uMsg != WM_MOUSEMOVE)
         return false;
 
-    if (g_pCore->GetGame()->GetSystemState() != 9)
+    if (g_pCore->GetGame()->GetSystemState() != SystemState::GS_PLAYING_GAME)
         return false;
 
     // HACK:  Grab our local player, and check his vehicle

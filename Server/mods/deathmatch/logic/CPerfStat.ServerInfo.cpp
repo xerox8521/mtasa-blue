@@ -5,12 +5,20 @@
  *  FILE:        mods/deathmatch/logic/CPerfStat.ServerInfo.cpp
  *  PURPOSE:     Performance stats manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CPerfStatManager.h"
+#include "CStaticFunctionDefinitions.h"
+#include "CMainConfig.h"
+#include "CTickRateSettings.h"
+#include "CBandwidthSettings.h"
+#include "ASE.h"
+#include "CGame.h"
 #include "net/SimHeaders.h"
+
 #ifdef WIN32
     #include "Psapi.h"
 #else

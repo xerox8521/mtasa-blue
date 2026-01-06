@@ -5,22 +5,20 @@
  *  FILE:        game_sa/CObjectSA.h
  *  PURPOSE:     Header file for object entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
-
-#include "CVehicleSA.h"
-#include "CPedSA.h"
 
 #pragma once
 
 #include <game/CObject.h>
 #include "CPhysicalSA.h"
 
+class CFireSAInterface;
+
 #define FUNC_CObject_Create             0x5A1F60
 #define FUNC_CObject_Explode            0x5A1340
 #define FUNC_CGlass_WindowRespondsToCollision 0x71BC40
-#define FUNC_CObject_AddToControlCodeList 0x59F400 // Dynamic objects-combinations like garage doors, train crossings, cranes use this to be processed
 
 class CObjectInfo
 {
@@ -155,11 +153,9 @@ public:
     CVector* GetScale();
     void     ResetScale();
 
+    bool IsOnFire() override { return GetObjectInterface()->pFire != nullptr; }
+    bool SetOnFire(bool onFire) override;
+
 private:
     void CheckForGangTag();
 };
-
-/*
-#define COBJECTSA_DEFINED
-#define COBJECTSAINTERFACE_DEFINED
-*/

@@ -5,7 +5,7 @@
  *  FILE:        mods/shared_logic/lua/CLuaMain.h
  *  PURPOSE:     Lua virtual machine container class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -59,7 +59,7 @@ public:
 
     void ResetInstructionCount();
 
-    class CResource* GetResource() { return m_pResource; }
+    class CResource* GetResource() const { return m_pResource; }
 
     CXMLFile*     CreateXML(const char* szFilename, bool bUseIDs = true, bool bReadOnly = false);
     CXMLNode*     ParseString(const char* strXmlContent);
@@ -98,7 +98,7 @@ private:
 
     std::list<CXMLFile*>                            m_XMLFiles;
     std::unordered_set<std::unique_ptr<SXMLString>> m_XMLStringNodes;
-    static SString       ms_strExpectedUndumpHash;
+    static SString                                  ms_strExpectedUndumpHash;
 
     bool m_bEnableOOP;
 

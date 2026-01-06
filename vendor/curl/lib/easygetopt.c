@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             ___|___/|_| ______|
  *
- * Copyright (C) 1998 - 2020, Daniel Stenberg, <daniel.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -18,6 +18,8 @@
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
  *
+ * SPDX-License-Identifier: curl
+ *
  ***************************************************************************/
 
 #include "curl_setup.h"
@@ -27,12 +29,12 @@
 #ifndef CURL_DISABLE_GETOPTIONS
 
 /* Lookups easy options at runtime */
-static struct curl_easyoption *lookup(const char *name, CURLoption id)
+static const struct curl_easyoption *lookup(const char *name, CURLoption id)
 {
   DEBUGASSERT(name || id);
   DEBUGASSERT(!Curl_easyopts_check());
   if(name || id) {
-    struct curl_easyoption *o = &Curl_easyopts[0];
+    const struct curl_easyoption *o = &Curl_easyopts[0];
     do {
       if(name) {
         if(strcasecompare(o->name, name))
@@ -40,7 +42,7 @@ static struct curl_easyoption *lookup(const char *name, CURLoption id)
       }
       else {
         if((o->id == id) && !(o->flags & CURLOT_FLAG_ALIAS))
-          /* don't match alias options */
+          /* do not match alias options */
           return o;
       }
       o++;

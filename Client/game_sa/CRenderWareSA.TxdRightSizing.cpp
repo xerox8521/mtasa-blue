@@ -6,14 +6,19 @@
  *  PURPOSE:     RenderWare mapping to Grand Theft Auto: San Andreas
  *               and miscellaneous rendering functions
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *  RenderWare is © Criterion Software
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <core/CCoreInterface.h>
 #include <game/RenderWareD3D.h>
+#include "CGameSA.h"
 #include "gamesa_renderware.h"
+
+extern CCoreInterface* g_pCore;
+extern CGameSA*        pGame;
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -64,15 +69,36 @@ bool CRenderWareSA::RightSizeTxd(const SString& strInTxdFilename, const SString&
         if (pNewRwTexture && pNewRwTexture != pTexture)
         {
             // Replace texture in txd if changed
-            RwTextureDestroy(pTexture);
-            RwTexDictionaryAddTexture(pTxd, pNewRwTexture);
-            bChanged = true;
+            // Remove old texture from TXD safely before destroying it
+            pGame->GetRenderWareSA()->RwTexDictionaryRemoveTexture(pTxd, pTexture);
+            if (pTexture->txd == nullptr)
+            {
+                RwTextureDestroy(pTexture);
+                // Initialize new texture's TXDList before adding
+                pNewRwTexture->TXDList.next = &pNewRwTexture->TXDList;
+                pNewRwTexture->TXDList.prev = &pNewRwTexture->TXDList;
+                pNewRwTexture->txd = nullptr;
+                RwTexDictionaryAddTexture(pTxd, pNewRwTexture);
+                bChanged = true;
+            }
+            else
+            {
+                // Unlink failed - discard new texture to avoid corruption
+                pNewRwTexture->TXDList.next = &pNewRwTexture->TXDList;
+                pNewRwTexture->TXDList.prev = &pNewRwTexture->TXDList;
+                pNewRwTexture->txd = nullptr;
+                RwTextureDestroy(pNewRwTexture);
+            }
         }
         else
         {
-            // Keep texture (Reinsert to preserve order for easier debugging)
-            RwTexDictionaryRemoveTexture(pTxd, pTexture);
-            RwTexDictionaryAddTexture(pTxd, pTexture);
+            // Reinsert to preserve order (only if texture still linked to this TXD)
+            if (pTexture && pTexture->txd == pTxd)
+            {
+                pGame->GetRenderWareSA()->RwTexDictionaryRemoveTexture(pTxd, pTexture);
+                if (pTexture->txd == nullptr)
+                    RwTexDictionaryAddTexture(pTxd, pTexture);
+            }
         }
     }
 
@@ -199,9 +225,9 @@ RwTexture* CRenderWareSA::RightSizeTexture(RwTexture* pTexture, uint uiSizeLimit
     header.RasterFormat.rasterFormat = (pRaster->format & 0x0f)
                                        << 8;            // ( dxt1 = 0x00000100 or 0x00000200 / dxt3 = 0x00000300 ) | 0x00008000 mipmaps?
     header.RasterFormat.d3dFormat = pD3DRaster->format;
-    header.RasterFormat.width = uiReqWidth;
-    header.RasterFormat.height = uiReqHeight;
-    header.RasterFormat.depth = pRaster->depth;
+    header.RasterFormat.width = static_cast<unsigned short>(uiReqWidth);
+    header.RasterFormat.height = static_cast<unsigned short>(uiReqHeight);
+    header.RasterFormat.depth = static_cast<unsigned char>(pRaster->depth);
     header.RasterFormat.numLevels = 1;
     header.RasterFormat.rasterType = pRaster->type;            // dxt1 = 4 / dxt3 = 4
     header.RasterFormat.alpha = bHasAlpha;

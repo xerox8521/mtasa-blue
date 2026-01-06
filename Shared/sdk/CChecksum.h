@@ -5,7 +5,7 @@
  *  FILE:        sdk/CChecksum.h
  *  PURPOSE:     Checksum class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 // Note: Cannot use #pragma once here, due to a duplicate existing in publicsdk
@@ -36,13 +36,17 @@ public:
     // GenerateChecksumFromFile returns either a CChecksum or an error message.
     static std::variant<CChecksum, std::string> GenerateChecksumFromFile(const SString& strFilename)
     {
+        // Reset error number before using it to report an error
+        errno = 0;
+
         CChecksum result;
         result.ulCRC = CRCGenerator::GetCRCFromFile(strFilename);
 
-        if (!result.ulCRC)
+        if (!result.ulCRC && errno)
             return SString("CRC could not open file: %s", std::strerror(errno));
 
         bool success = CMD5Hasher().Calculate(strFilename, result.md5);
+
         if (!success)
             return SString("MD5 could not open file: %s", std::strerror(errno));
 

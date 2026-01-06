@@ -5,7 +5,7 @@
  *  FILE:        game_sa/CBikeSA.h
  *  PURPOSE:     Header file for bike vehicle entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -14,7 +14,21 @@
 #include <game/CBike.h>
 #include "CVehicleSA.h"
 
-#define FUNC_CBike_PlaceOnRoadProperly              0x6BEEB0
+enum class eBikeNodes
+{
+    NONE = 0,
+    CHASSIS,
+    FORKS_FRONT,
+    FORKS_REAR,
+    WHEEL_FRONT,
+    WHEEL_REAR,
+    MUDGUARD,
+    HANDLEBARS,
+    MISC_A,
+    MISC_B,
+
+    NUM_NODES
+};
 
 struct sRideAnimData
 {
@@ -31,7 +45,7 @@ static_assert(sizeof(sRideAnimData) == 0x1C, "Invalid size for sRideAnimData");
 class CBikeSAInterface : public CVehicleSAInterface
 {
 public:
-    int32                m_apModelNodes[10];
+    RwFrame*             m_apModelNodes[static_cast<std::size_t>(eBikeNodes::NUM_NODES)];
     int8                 m_bLeanMatrixCalculated;
     int8                 pad0[3];            // Maybe prev value is int32
     int8                 m_mLeanMatrix[72];
@@ -90,15 +104,15 @@ class CBikeSA : public virtual CBike, public virtual CVehicleSA
 {
 private:
     CBikeHandlingEntrySA* m_pBikeHandlingData = nullptr;
-public:
-    CBikeSA(){};
-    CBikeSA(CBikeSAInterface* bike);
-    CBikeSA(eVehicleTypes dwModelID, unsigned char ucVariation, unsigned char ucVariation2);
 
-    CBikeSAInterface*   GetBikeInterface() { return (CBikeSAInterface*)m_pInterface; };
+public:
+    CBikeSA() = default;
+    CBikeSA(CBikeSAInterface* pInterface);
+
+    CBikeSAInterface* GetBikeInterface() { return reinterpret_cast<CBikeSAInterface*>(GetInterface()); }
 
     CBikeHandlingEntry* GetBikeHandlingData();
     void                SetBikeHandlingData(CBikeHandlingEntry* pHandling);
 
-    void                RecalculateBikeHandling();
+    void RecalculateBikeHandling();
 };

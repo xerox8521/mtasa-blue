@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/Config.h
  *  PURPOSE:     Header for platform specific functions, types and defines
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -15,37 +15,6 @@
 
 #include <MTAPlatform.h>
 #include <Common.h>
-
-/*** va_pass() (passing of ... variable length arguments ***/
-template <unsigned char count>
-struct SVaPassNext
-{
-    SVaPassNext<count - 1> big;
-    unsigned long          dw;
-};
-template <>
-struct SVaPassNext<0>
-{
-};
-// SVaPassNext - is generator of structure of any size at compile time.
-
-class CVaPassNext
-{
-public:
-    SVaPassNext<50> svapassnext;
-    CVaPassNext(va_list& args)
-    {
-        try
-        {            // to avoid access violation
-            memcpy(&svapassnext, args, sizeof(svapassnext));
-        }
-        catch (...)
-        {
-        }
-    }
-};
-#define va_pass(valist) CVaPassNext(valist).svapassnext
-/*** va_pass() (passing of ... variable length arguments ***/
 
 // Min and max number of characters in player nicknames (this must match the client's)
 #define MIN_PLAYER_NICK_LENGTH 1
@@ -60,9 +29,9 @@ public:
 // Min number of characters in passwords
 #define MIN_PASSWORD_LENGTH 1
 
-// Min and max number of characters in chat messages
+// Min and max number of characters in chat messages (the message itself, not including player nick)
 #define MIN_CHAT_LENGTH 1
-#define MAX_CHAT_LENGTH 96
+#define MAX_CHAT_LENGTH 255
 
 // Min and max number of characters in a console command
 #define MIN_COMMAND_LENGTH 1
@@ -70,7 +39,7 @@ public:
 
 // Min and max number of characters in chat echos
 #define MIN_CHATECHO_LENGTH 1
-#define MAX_CHATECHO_LENGTH 128
+#define MAX_CHATECHO_LENGTH (MAX_CHAT_LENGTH + MAX_PLAYER_NICK_LENGTH + 2) // +2 is for ": " between player nick and the message
 
 // Min and max number of characters in outputChatBox from the server
 #define MIN_OUTPUTCHATBOX_LENGTH 1
@@ -144,23 +113,17 @@ public:
 // SQL variable placeholder (replaces with actual variable content)
 #define SQL_VARIABLE_PLACEHOLDER    '?'
 
-// Security script path
-#define LUA_SECURITY_SCRIPT         "security.lua"
-
 // Server FPS limit (in milliseconds)
 #define FPS_LIMIT                   16
 
 // Max garages
 #define MAX_GARAGES                 50
 
-// Game-monitor.com query URL (use %u for port input)
-#define QUERY_URL_GAME_MONITOR      "http://master.game-monitor.com/heartbeat.php?p=%ASE%&e=3"
-
 // MTA master server query URL (Inputs: game port, ase port, http port, version, extra, serverip)
-#define QUERY_URL_MTA_MASTER_SERVER "http://master.mtasa.com/ase/add.php?g=%GAME%&a=%ASE%&h=%HTTP%&v=%VER%&x=%EXTRA%&ip=%IP%"
+#define QUERY_URL_MTA_MASTER_SERVER "https://master.multitheftauto.com/ase/add.php?g=%GAME%&a=%ASE%&h=%HTTP%&v=%VER%&x=%EXTRA%&ip=%IP%"
 
 // MTA port tester URL
-#define PORT_TESTER_URL             "http://nightly.mtasa.com/ports/"
+#define PORT_TESTER_URL             "https://nightly.multitheftauto.com/ports/"
 
 // MTA minclientversion auto update and others
-#define HQCOMMS_URL                 "http://updatesa.multitheftauto.com/sa/server/hqcomms/"
+#define HQCOMMS_URL                 "https://updatesa.multitheftauto.com/sa/server/hqcomms/"

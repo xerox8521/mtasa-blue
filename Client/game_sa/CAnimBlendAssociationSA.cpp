@@ -5,11 +5,15 @@
  *  FILE:        game_sa/CAnimBlendAssociationSA.cpp
  *  PURPOSE:     Animation blend association
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CAnimBlendAssociationSA.h"
+#include "CAnimBlendHierarchySA.h"
+#include "CAnimManagerSA.h"
+#include "CGameSA.h"
 
 extern CGameSA* pGame;
 
@@ -28,7 +32,7 @@ CAnimBlendAssociationSAInterface* CAnimBlendAssociationSA::Constructor(CAnimBlen
 {
     DWORD DwFunc = 0x4CF080;
     DWORD DwThisInterface = reinterpret_cast<DWORD>(m_pInterface);
-    _asm
+    __asm
     {
         mov     ecx, DwThisInterface
         push    staticAssociationByReference
@@ -40,7 +44,7 @@ CAnimBlendAssociationSAInterface* CAnimBlendAssociationSA::Constructor(RpClump* 
 {
     DWORD DwFunc = 0x4CEFC0;
     DWORD DwThisInterface = reinterpret_cast<DWORD>(m_pInterface);
-    _asm
+    __asm
     {
         mov     ecx, DwThisInterface
         push    pAnimHierarchy
@@ -72,7 +76,7 @@ void CAnimBlendAssociationSA::Init(RpClump* pClump, CAnimBlendHierarchySAInterfa
 {
     DWORD DwFunc = 0x4CED50;
     DWORD DwThisInterface = reinterpret_cast<DWORD>(m_pInterface);
-    _asm
+    __asm
     {
         mov     ecx, DwThisInterface
         push    pAnimHierarchy
@@ -85,7 +89,7 @@ void CAnimBlendAssociationSA::AllocateAnimBlendNodeArray(int iCount)
 {
     DWORD DwFunc = 0x4CE9F0;
     DWORD DwThisInterface = reinterpret_cast<DWORD>(m_pInterface);
-    _asm
+    __asm
     {
         mov     ecx, DwThisInterface
         push    iCount
@@ -97,7 +101,7 @@ void CAnimBlendAssociationSA::FreeAnimBlendNodeArray()
 {
     DWORD DwFunc = 0x4CEA40;
     DWORD DwThisInterface = reinterpret_cast<DWORD>(m_pInterface);
-    _asm
+    __asm
     {
         mov     ecx, DwThisInterface
         call    DwFunc
@@ -109,13 +113,18 @@ std::unique_ptr<CAnimBlendHierarchy> CAnimBlendAssociationSA::GetAnimHierarchy()
     return pGame->GetAnimManager()->GetAnimBlendHierarchy(m_pInterface->pAnimHierarchy);
 }
 
+const std::unique_ptr<CAnimBlendHierarchy> CAnimBlendAssociationSA::GetAnimHierarchy() const noexcept
+{
+    return pGame->GetAnimManager()->GetAnimBlendHierarchy(m_pInterface->pAnimHierarchy);
+}
+
 void CAnimBlendAssociationSA::SetCurrentProgress(float fProgress)
 {
     float fTime = m_pInterface->pAnimHierarchy->fTotalTime * fProgress;
 
     DWORD DwFunc = 0x4CEA80;
     DWORD DwThisInterface = reinterpret_cast<DWORD>(m_pInterface);
-    _asm
+    __asm
     {
         mov     ecx, DwThisInterface
         push    fTime

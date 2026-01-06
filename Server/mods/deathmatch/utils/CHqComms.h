@@ -4,9 +4,13 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        mods/deathmatch/utils/CHqComms.h
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
+#pragma once
+
+#include "CStaticFunctionDefinitions.h"
 
 enum
 {
@@ -142,7 +146,7 @@ public:
     // Auto update of min client check
     void ProcessMinClientVersion(CBitStream& bitStream)
     {
-        int     iForceSetting = 0;
+        int         iForceSetting = 0;
         CMtaVersion strResultMinClientVersion;
 
         bitStream->Read(iForceSetting);

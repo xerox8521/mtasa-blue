@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CPlayer.h
  *  PURPOSE:     Player ped entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -23,6 +23,7 @@ class CPlayer;
 #include "CObject.h"
 #include "packets/CPacket.h"
 #include "packets/CPlayerStatsPacket.h"
+#include "CStringName.h"
 class CKeyBinds;
 class CPlayerCamera;
 enum class eVehicleAimDirection : unsigned char;
@@ -98,18 +99,16 @@ public:
     void               SetPlayerVersion(const CMtaVersion& strPlayerVersion);
     const CMtaVersion& GetPlayerVersion() { return m_strPlayerVersion; };
     bool               ShouldIgnoreMinClientVersionChecks();
-    void               SetDiscordJoinSecret(const SString& joinSecret) { m_strDiscordJoinSecret = joinSecret; }
-    SString            GetDiscordJoinSecret() const { return m_strDiscordJoinSecret; }
 
     bool IsMuted() { return m_bIsMuted; };
     void SetMuted(bool bSetMuted) { m_bIsMuted = bSetMuted; };
     bool IsJoined() { return m_bIsJoined; }
     void SetJoined() { m_bIsJoined = true; }
 
-    bool SubscribeElementData(CElement* pElement, const std::string& strName);
-    bool UnsubscribeElementData(CElement* pElement, const std::string& strName);
+    bool SubscribeElementData(CElement* pElement, CStringName name);
+    bool UnsubscribeElementData(CElement* pElement, CStringName name);
     bool UnsubscribeElementData(CElement* pElement);
-    bool IsSubscribed(CElement* pElement, const std::string& strName) const;
+    bool IsSubscribed(CElement* pElement, CStringName name) const;
 
     float GetCameraRotation() { return m_fCameraRotation; };
     void  SetCameraRotation(float fRotation) { m_fCameraRotation = fRotation; };
@@ -117,16 +116,16 @@ public:
     long GetMoney() { return m_lMoney; };
     void SetMoney(long lMoney) { m_lMoney = lMoney; };
 
-    const CVector& GetSniperSourceVector() { return m_vecSniperSource; };
-    void           SetSniperSourceVector(const CVector& vecSource) { m_vecSniperSource = vecSource; };
-    void           GetTargettingVector(CVector& vecTarget) { vecTarget = m_vecTargetting; };
-    void           SetTargettingVector(const CVector& vecTarget) { m_vecTargetting = vecTarget; };
-    float          GetAimDirection() { return m_fAimDirection; };
-    void           SetAimDirection(float fDirection) { m_fAimDirection = fDirection; };
+    const CVector&       GetSniperSourceVector() { return m_vecSniperSource; };
+    void                 SetSniperSourceVector(const CVector& vecSource) { m_vecSniperSource = vecSource; };
+    void                 GetTargettingVector(CVector& vecTarget) { vecTarget = m_vecTargetting; };
+    void                 SetTargettingVector(const CVector& vecTarget) { m_vecTargetting = vecTarget; };
+    float                GetAimDirection() { return m_fAimDirection; };
+    void                 SetAimDirection(float fDirection) { m_fAimDirection = fDirection; };
     eVehicleAimDirection GetDriveByDirection() { return m_ucDriveByDirection; };
-    void           SetDriveByDirection(eVehicleAimDirection ucDirection) { m_ucDriveByDirection = ucDirection; };
-    bool           IsAkimboArmUp() { return m_bAkimboArmUp; };
-    void           SetAkimboArmUp(bool bUp) { m_bAkimboArmUp = bUp; };
+    void                 SetDriveByDirection(eVehicleAimDirection ucDirection) { m_ucDriveByDirection = ucDirection; };
+    bool                 IsAkimboArmUp() { return m_bAkimboArmUp; };
+    void                 SetAkimboArmUp(bool bUp) { m_bAkimboArmUp = bUp; };
 
     NetServerPlayerID& GetSocket() { return m_PlayerSocket; };
     const char*        GetSourceIP();
@@ -169,7 +168,7 @@ public:
     std::list<CObject*>::const_iterator IterSyncingObjectEnd() { return m_SyncingObjects.end(); };
 
     unsigned int GetScriptDebugLevel() { return m_uiScriptDebugLevel; };
-    bool         SetScriptDebugLevel(unsigned int uiLevel);
+    bool         SetScriptDebugLevel(std::uint8_t level);
 
     void          SetDamageInfo(ElementID ElementID, unsigned char ucWeapon, unsigned char ucBodyPart);
     void          ValidateDamageInfo();
@@ -216,12 +215,6 @@ public:
     const std::string& GetSerial(uint uiIndex = 0) { return m_strSerials[uiIndex % NUMELMS(m_strSerials)]; }
     void               SetSerial(const std::string& strSerial, uint uiIndex) { m_strSerials[uiIndex % NUMELMS(m_strSerials)] = strSerial; }
 
-    const std::string& GetSerialUser() { return m_strSerialUser; };
-    void               SetSerialUser(const std::string& strUser) { m_strSerialUser = strUser; };
-
-    const std::string& GetCommunityID() { return m_strCommunityID; };
-    void               SetCommunityID(const std::string& strID) { m_strCommunityID = strID; };
-
     unsigned char GetBlurLevel() { return m_ucBlurLevel; }
     void          SetBlurLevel(unsigned char ucBlurLevel) { m_ucBlurLevel = ucBlurLevel; }
 
@@ -263,6 +256,12 @@ public:
 
     void SetLeavingServer(bool bLeaving) noexcept { m_bIsLeavingServer = bLeaving; }
     bool IsLeavingServer() const noexcept { return m_bIsLeavingServer; }
+
+    void SetRedirecting(bool bRedirecting) noexcept { m_bIsRedirecting = bRedirecting; }
+    bool IsRedirecting() const noexcept { return m_bIsRedirecting; }
+
+    bool GetTeleported() const noexcept { return m_teleported; }
+    void SetTeleported(bool state) noexcept { m_teleported = state; }
 
 protected:
     bool ReadSpecialData(const int iLine) override { return true; }
@@ -361,16 +360,16 @@ private:
     CMtaVersion    m_strPlayerVersion;
     bool           m_bIsMuted;
     bool           m_bIsLeavingServer;
+    bool           m_bIsRedirecting;
     bool           m_bIsJoined;
-    SString        m_strDiscordJoinSecret;
 
     bool m_bNametagColorOverridden;
 
-    float         m_fCameraRotation;
-    long          m_lMoney;
-    CVector       m_vecSniperSource;
-    CVector       m_vecTargetting;
-    float         m_fAimDirection;
+    float                m_fCameraRotation;
+    long                 m_lMoney;
+    CVector              m_vecSniperSource;
+    CVector              m_vecTargetting;
+    float                m_fAimDirection;
     eVehicleAimDirection m_ucDriveByDirection;
 
     bool m_bAkimboArmUp;
@@ -416,8 +415,6 @@ private:
     bool          m_bNametagShowing;
 
     std::string m_strSerials[2];
-    std::string m_strSerialUser;
-    std::string m_strCommunityID;
 
     unsigned char m_ucBlurLevel;
 
@@ -436,7 +433,7 @@ private:
 
     std::map<std::string, std::string> m_AnnounceValues;
 
-    std::set<std::pair<CElement*, std::string>> m_DataSubscriptions;
+    std::set<std::pair<CElement*, CStringName>> m_DataSubscriptions;
 
     uint m_uiWeaponIncorrectCount;
 
@@ -464,4 +461,6 @@ private:
 
     ushort  m_usPrevDimension;
     SString m_strQuitReasonForLog;
+
+    bool m_teleported = false;
 };

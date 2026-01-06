@@ -5,29 +5,38 @@
  *  FILE:        game_sa/CPlayerPedSA.cpp
  *  PURPOSE:     Player ped entity
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include <core/CCoreInterface.h>
+#include <multiplayer/CMultiplayer.h>
+#include "CAnimBlendAssocGroupSA.h"
+#include "CAnimManagerSA.h"
+#include "CGameSA.h"
+#include "CPlayerInfoSA.h"
+#include "CPlayerPedSA.h"
+#include "CWorldSA.h"
+#include "CProjectileInfoSA.h"
 
-/**
- * Constructor for CPlayerPedSA
- */
+extern CCoreInterface* g_pCore;
+extern CGameSA*        pGame;
+
+class CPedClothesDesc;
 
 static CPedClothesDesc*    pLocalClothes = 0;
 static CWantedSAInterface* pLocalWanted = 0;
 static std::set<SString>   ms_DoneAnimBlockRefMap;
 
-CPlayerPedSA::CPlayerPedSA(ePedModel pedType)
+CPlayerPedSA::CPlayerPedSA(unsigned int nModelIndex)
 {
-    DEBUG_TRACE("CPlayerPedSA::CPlayerPedSA( ePedModel pedType )");
     // based on CPlayerPed::SetupPlayerPed (R*)
     DWORD CPedOperatorNew = FUNC_CPedOperatorNew;
     DWORD CPlayerPedConstructor = FUNC_CPlayerPedConstructor;
 
     DWORD dwPedPointer = 0;
-    _asm
+    __asm
     {
         push    SIZEOF_CPLAYERPED
         call    CPedOperatorNew
@@ -41,17 +50,16 @@ CPlayerPedSA::CPlayerPedSA(ePedModel pedType)
         call    CPlayerPedConstructor
     }
 
-    this->SetInterface((CEntitySAInterface*)dwPedPointer);
+    SetInterface((CEntitySAInterface*)dwPedPointer);
 
-    this->Init();            // init our interfaces
+    Init();            // init our interfaces
     CPoolsSA* pools = (CPoolsSA*)pGame->GetPools();
-    this->internalID = pools->GetPedRef((DWORD*)this->GetInterface());
     CWorldSA* world = (CWorldSA*)pGame->GetWorld();
 
-    this->SetModelIndex(pedType);
-    this->BeingDeleted = FALSE;
-    this->DoNotRemoveFromGame = FALSE;
-    this->SetType(PLAYER_PED);
+    SetModelIndex(nModelIndex);
+    BeingDeleted = false;
+    DoNotRemoveFromGame = false;
+    SetType(PLAYER_PED);
 
     // Allocate a player data struct and set it as the players
     m_bIsLocal = false;
@@ -68,7 +76,7 @@ CPlayerPedSA::CPlayerPedSA(ePedModel pedType)
     // Set default stuff
     m_pData->m_bRenderWeapon = true;
     m_pData->m_Wanted = pLocalWanted;
-    m_pData->m_fSprintEnergy = 1000.0f;
+    m_pData->m_fTimeCanRun = 1000.0f;
 
     // Clothes pointers or we'll crash later (TODO: Wrap up with some cloth classes and make it unique per player)
     m_pData->m_pClothes = pLocalClothes;
@@ -93,15 +101,13 @@ CPlayerPedSA::CPlayerPedSA(ePedModel pedType)
 
 CPlayerPedSA::CPlayerPedSA(CPlayerPedSAInterface* pPlayer)
 {
-    DEBUG_TRACE("CPlayerPedSA::CPlayerPedSA( CPedSAInterface * ped )");
     // based on CPlayerPed::SetupPlayerPed (R*)
-    this->SetInterface((CEntitySAInterface*)pPlayer);
+    SetInterface((CEntitySAInterface*)pPlayer);
 
-    this->Init();
+    Init();
     CPoolsSA* pools = (CPoolsSA*)pGame->GetPools();
-    this->internalID = pools->GetPedRef((DWORD*)this->GetInterface());
-    this->SetType(PLAYER_PED);
-    this->BeingDeleted = FALSE;
+    SetType(PLAYER_PED);
+    BeingDeleted = false;
 
     m_bIsLocal = true;
     DoNotRemoveFromGame = true;
@@ -125,26 +131,17 @@ CPlayerPedSA::CPlayerPedSA(CPlayerPedSAInterface* pPlayer)
 
 CPlayerPedSA::~CPlayerPedSA()
 {
-    DEBUG_TRACE("CPlayerPedSA::~CPlayerPedSA( )");
-    if (!this->BeingDeleted && DoNotRemoveFromGame == false)
+    if (!BeingDeleted && DoNotRemoveFromGame == false)
     {
-        DWORD dwInterface = (DWORD)m_pInterface;
-
-        if ((DWORD)this->GetInterface()->vtbl != VTBL_CPlaceable)
+        if (!m_pInterface->IsPlaceableVTBL())
         {
             CWorldSA* world = (CWorldSA*)pGame->GetWorld();
+            pGame->GetProjectileInfo()->RemoveEntityReferences(this);
             world->Remove(m_pInterface, CPlayerPed_Destructor);
 
-            DWORD dwThis = (DWORD)m_pInterface;
-            DWORD dwFunc = m_pInterface->vtbl->SCALAR_DELETING_DESTRUCTOR;            // we use the vtbl so we can be type independent
-            _asm
-            {
-                mov     ecx, dwThis
-                push    1            // delete too
-                call    dwFunc
-            }
+            m_pInterface->Destructor(true);
         }
-        this->BeingDeleted = true;
+        BeingDeleted = true;
         ((CPoolsSA*)pGame->GetPools())->RemovePed((CPed*)(CPedSA*)this, false);
     }
 
@@ -160,37 +157,12 @@ CWanted* CPlayerPedSA::GetWanted()
     return m_pWanted;
 }
 
-float CPlayerPedSA::GetSprintEnergy()
-{
-    /*
-    OutputDebugString("GetSprintEnergy HACK\n");
-
-    m_pData->bCanBeDamaged = true;
-    m_pData->m_bRenderWeapon = true;
-    m_pData->m_bDontAllowWeaponChange = true;
-
-    ((CPedSAInterface*)GetInterface())->pedFlags.bUpdateAnimHeading = true;
-    ((CPedSAInterface*)GetInterface())->pedFlags.bHeadStuckInCollision = true;
-    ((CPedSAInterface*)GetInterface())->pedFlags.bDonePositionOutOfCollision = true;
-    ((CPedSAInterface*)GetInterface())->pedFlags.bIsRestoringGun = true;
-
-    RebuildPlayer ();
-    */
-
-    return m_pData->m_fSprintEnergy;
-}
-
-void CPlayerPedSA::SetSprintEnergy(float fSprintEnergy)
-{
-    m_pData->m_fSprintEnergy = fSprintEnergy;
-}
-
 void CPlayerPedSA::SetInitialState()
 {
     DWORD dwUnknown = 1;
     DWORD dwFunction = FUNC_SetInitialState;
     DWORD dwThis = (DWORD)m_pInterface;
-    _asm
+    __asm
     {
         push    dwUnknown
         mov     ecx, dwThis
@@ -207,7 +179,7 @@ void CPlayerPedSA::SetInitialState()
 
 eMoveAnim CPlayerPedSA::GetMoveAnim()
 {
-    CPedSAInterface* pedInterface = (CPedSAInterface*)this->GetInterface();
+    CPedSAInterface* pedInterface = (CPedSAInterface*)GetInterface();
     return (eMoveAnim)pedInterface->iMoveAnimGroup;
 }
 
@@ -316,87 +288,31 @@ void CPlayerPedSA::SetMoveAnim(eMoveAnim iAnimGroup)
     m_iCustomMoveAnim = iAnimGroup;
 
     // Set the the new move animation group now, although it does get updated through the hooks as well
-    CPedSAInterface* pedInterface = (CPedSAInterface*)this->GetInterface();
+    CPedSAInterface* pedInterface = (CPedSAInterface*)GetInterface();
     pedInterface->iMoveAnimGroup = (int)iAnimGroup;
 
     DWORD dwThis = (DWORD)pedInterface;
     DWORD dwFunc = FUNC_CPlayerPed_ReApplyMoveAnims;
-    _asm
+    __asm
     {
         mov     ecx, dwThis
         call    dwFunc
     }
 }
 
-/**
- * Gets information on the player's wanted status
- * @return Pointer to a CWanted class containing the wanted information for the PlayerPed.
- */
-// CWanted   * CPlayerPedSA::GetWanted (  )
-//{
-// return internalInterface->Wanted;
-//}
-
-/**
- * Gets the current weapon type that the playerped is using
- * @return DWORD containing the current weapon type
- * \todo Check this is the weapon type, not the actual weapon ID (or whatever)
- */
-/*DWORD CPlayerPedSA::GetCurrentWeaponType (  )
+CEntity* CPlayerPedSA::GetTargetedEntity() const
 {
-    return internalInterface->CurrentWeapon;
-}*/
+    CEntitySAInterface* targetInterface = GetPlayerPedInterface()->mouseTargetEntity;
+    if (!targetInterface)
+        return nullptr;
 
-/**
- * Gets the time the last shot was fired by the playerped
- * @return DWORD containing a system time value
- */
-/*DWORD CPlayerPedSA::GetLastShotTime (  )
-{
-    return internalInterface->LastShotTime;
+    return pGame->GetPools()->GetEntity(reinterpret_cast<DWORD*>(targetInterface));
 }
-*/
-/**
- * Checks if the player is stationary on foot
- * \todo Does this duplicate?
- * @return BOOL TRUE if the player is stationary on foot, FALSE otherwise
- */
-/*
-BOOL CPlayerPedSA::IsStationaryOnFoot (  )
-{
-    return internalInterface->StationaryOnFoot;
-}*/
 
-/**
- * Resets the played ped to their initial state
- * \note This also resets some global values, such as game speed
- */
-/*
-VOID CPlayerPedSA::ResetToInitialState (  )
+void CPlayerPedSA::SetTargetedEntity(CEntity* targetEntity)
 {
-    DWORD dwFunction = FUNC_SetInitialState;
-    DWORD dwThis = (DWORD)internalInterface;
-    _asm
-    {
-        mov     ecx, dwThis
-        call    dwFunction
-    }
-}*/
-
-/**
- * Clears information related to the player targeting
- */
-/*
-VOID CPlayerPedSA::ClearWeaponTarget (  )
-{
-    DWORD dwFunction = FUNC_ClearWeaponTarget;
-    DWORD dwThis = (DWORD)internalInterface;
-    _asm
-    {
-        mov     ecx, dwThis
-        call    dwFunction
-    }
-}*/
+    GetPlayerPedInterface()->mouseTargetEntity = targetEntity ? targetEntity->GetInterface() : nullptr;
+}
 
 ////////////////////////////////////////////////////////////////
 //
@@ -527,9 +443,11 @@ __declspec(noinline) int _cdecl OnCPlayerPed_ProcessAnimGroups_Mid(CPlayerPedSAI
 #define HOOKPOS_CPlayerPed_ProcessAnimGroups_Mid        0x0609A44
 #define HOOKSIZE_CPlayerPed_ProcessAnimGroups_Mid       6
 DWORD RETURN_CPlayerPed_ProcessAnimGroups_Mid = 0x0609A4A;
-void _declspec(naked) HOOK_CPlayerPed_ProcessAnimGroups_Mid()
+static void __declspec(naked) HOOK_CPlayerPed_ProcessAnimGroups_Mid()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         pushad
         push    eax
@@ -579,9 +497,11 @@ __declspec(noinline) int _cdecl OnCClothes_GetDefaultPlayerMotionGroup(int iReqM
 #define HOOKPOS_CClothes_GetDefaultPlayerMotionGroup        0x05A81B0
 #define HOOKSIZE_CClothes_GetDefaultPlayerMotionGroup       5
 DWORD RETURN_CClothes_GetDefaultPlayerMotionGroup = 0x05A81B5;
-void _declspec(naked) HOOK_CClothes_GetDefaultPlayerMotionGroup()
+static void __declspec(naked) HOOK_CClothes_GetDefaultPlayerMotionGroup()
 {
-    _asm
+    MTA_VERIFY_HOOK_LOCAL_SIZE;
+
+    __asm
     {
         mov     eax, 0x05A7FB0      // CClothes::GetPlayerMotionGroupToLoad
         call    eax
@@ -589,7 +509,7 @@ void _declspec(naked) HOOK_CClothes_GetDefaultPlayerMotionGroup()
         pushad
         push    eax
         call    OnCClothes_GetDefaultPlayerMotionGroup
-        mov     [esp+0],eax         // Put temp
+        mov     [esp+0], eax        // Put temp
         add     esp, 4*1
         popad
 

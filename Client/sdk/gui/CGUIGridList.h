@@ -5,7 +5,7 @@
  *  FILE:        sdk/gui/CGUIGridList.h
  *  PURPOSE:     Grid list widget interface
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -82,6 +82,8 @@ public:
     virtual void SetVerticalScrollBar(bool bEnabled) = 0;
     virtual void SetSortingEnabled(bool bEnabled) = 0;
     virtual bool IsSortingEnabled() = 0;
+    virtual void SetAutoSortSuppressed(bool bSuppressed) = 0;
+    virtual bool IsAutoSortSuppressed() const = 0;
     virtual void SetItemImage(int iRow, int hColumn, CGUIStaticImage* pImage) = 0;
 
     virtual float GetHorizontalScrollPosition() = 0;
@@ -110,6 +112,7 @@ public:
     virtual void SetSelectedItem(int iRow, int hColumn, bool bReset) = 0;
 
     virtual void SetSortColumnHandler(GUI_CALLBACK Callback) = 0;
+    virtual void SetSelectionHandler(GUI_CALLBACK Callback) = 0;
 
     virtual void SetIgnoreTextSpacer(bool bIgnoreTextSpacer) = 0;
 };

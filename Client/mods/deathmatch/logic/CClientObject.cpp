@@ -222,6 +222,13 @@ void CClientObject::SetOrientation(const CVector& vecPosition, const CVector& ve
 
 void CClientObject::ModelRequestCallback(CModelInfo* pModelInfo)
 {
+    // The model loading may take a while and there's a chance of object being moved to other dimension.
+    if (!IsVisibleInAllDimensions() && GetDimension() != m_pStreamer->GetDimension())
+    {
+        NotifyUnableToCreate();
+        return;
+    }
+
     // Create our object
     Create();
 }
@@ -268,10 +275,14 @@ void CClientObject::SetModel(unsigned short usModel)
         m_pModelInfo = g_pGame->GetModelInfo(usModel);
         UpdateSpatialData();
 
-        // Request the new model so we can recreate when it's done
-        if (m_pModelRequester->Request(usModel, this))
+        // Create the object if we're streamed in
+        if (IsStreamedIn())
         {
-            Create();
+            // Request the new model so we can recreate when it's done
+            if (m_pModelRequester->Request(usModel, this))
+            {
+                Create();
+            }
         }
     }
 }
@@ -396,9 +407,11 @@ void CClientObject::SetScale(const CVector& vecScale)
 void CClientObject::SetCollisionEnabled(bool bCollisionEnabled)
 {
     if (m_pObject)
-    {
         m_pObject->SetUsesCollision(bCollisionEnabled);
-    }
+
+    // Remove all contacts
+    for (const auto& ped : m_Contacts)
+        RemoveContact(ped);
 
     m_bUsesCollision = bCollisionEnabled;
 }
@@ -662,7 +675,7 @@ void CClientObject::SetMoveSpeed(const CVector& vecMoveSpeed)
 {
     if (m_pObject)
     {
-        m_pObject->SetMoveSpeed(const_cast<CVector*>(&vecMoveSpeed));
+        m_pObject->SetMoveSpeed(vecMoveSpeed);
     }
     m_vecMoveSpeed = vecMoveSpeed;
 }

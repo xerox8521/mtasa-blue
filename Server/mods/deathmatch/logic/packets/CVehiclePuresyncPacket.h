@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/packets/CVehiclePuresyncPacket.h
  *  PURPOSE:     Vehicle pure synchronization packet class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -13,7 +13,6 @@
 
 #include "CCommon.h"
 #include "CPacket.h"
-#include "CPlayer.h"
 
 class CVehicle;
 
@@ -21,7 +20,7 @@ class CVehiclePuresyncPacket final : public CPacket
 {
 public:
     CVehiclePuresyncPacket(){};
-    explicit CVehiclePuresyncPacket(class CPlayer* pPlayer) { m_pSourceElement = pPlayer; };
+    explicit CVehiclePuresyncPacket(class CPlayer* pPlayer);
 
     bool          HasSimHandler() const { return true; }
     ePacketID     GetPacketID() const { return PACKET_ID_PLAYER_VEHICLE_PURESYNC; };

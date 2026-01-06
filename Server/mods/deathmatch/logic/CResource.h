@@ -5,16 +5,18 @@
  *  FILE:        mods/deathmatch/logic/CResource.h
  *  PURPOSE:     Resource handler class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
+
 #pragma once
 
 #include "packets/CResourceStartPacket.h"
 #include "packets/CResourceStopPacket.h"
 #include "packets/CEntityRemovePacket.h"
-
+#include "SResourceStartOptions.h"
 #include "CResourceFile.h"
+#include "CAclRightName.h"
 #include <unzip.h>
 #include <list>
 #include <vector>
@@ -32,6 +34,7 @@ class CXMLNode;
 class CAccount;
 class CLuaMain;
 class CResourceManager;
+class CChecksum;
 
 struct SVersion
 {
@@ -128,23 +131,12 @@ enum class EResourceState : unsigned char
     Stopping,            // the resource is stopping
 };
 
-struct SResourceStartOptions
-{
-    bool bIncludedResources = true;
-    bool bConfigs = true;
-    bool bMaps = true;
-    bool bScripts = true;
-    bool bHTML = true;
-    bool bClientConfigs = true;
-    bool bClientScripts = true;
-    bool bClientFiles = true;
-};
-
 // A resource is either a directory with files or a ZIP file which contains the content of such directory.
 // The directory or ZIP file must contain a meta.xml file, which describes the required content by the resource.
 // It's a process-like environment for scripts, maps, images and other files.
 class CResource : public EHS
 {
+    friend class CResourceManager;  // Allow CResourceManager access to protected members
     using KeyValueMap = CFastHashMap<SString, SString>;
 
 public:
@@ -161,6 +153,8 @@ public:
     bool Unload();
 
     void Reload();
+
+    bool CanPlayerTriggerResourceStart(CPlayer* player, unsigned int playerStartCounter);
 
     // Get a resource default setting
     bool GetDefaultSetting(const char* szName, char* szValue, size_t sizeBuffer);
@@ -190,13 +184,13 @@ public:
     bool IsClientScriptsOn() const noexcept { return m_bClientScripts; }
     bool IsClientFilesOn() const noexcept { return m_bClientFiles; }
 
-    bool             GenerateChecksums();
+    bool                 GenerateChecksums();
     std::future<SString> GenerateChecksumForFile(CResourceFile* pResourceFile);
-    const CChecksum& GetLastMetaChecksum() { return m_metaChecksum; }
-    bool             HasResourceChanged();
-    void             ApplyUpgradeModifications();
-    void             LogUpgradeWarnings();
-    bool             GetCompatibilityStatus(SString& strOutStatus);
+    const CChecksum&     GetLastMetaChecksum() { return m_metaChecksum; }
+    bool                 HasResourceChanged();
+    void                 ApplyUpgradeModifications();
+    void                 LogUpgradeWarnings();
+    bool                 GetCompatibilityStatus(SString& strOutStatus);
 
     void      AddTemporaryInclude(CResource* resource);
     SString   GetFailureReason() { return m_strFailureReason.TrimEnd("\n"); }
@@ -259,9 +253,11 @@ public:
     bool CheckIfStartable();
     void DisplayInfo();
 
-    bool               GetFilePath(const char* szFilename, std::string& strPath);
-    const std::string& GetResourceDirectoryPath() const { return m_strResourceDirectoryPath; }
-    const std::string& GetResourceCacheDirectoryPath() const { return m_strResourceCachePath; }
+    bool                        GetFilePath(const char* szFilename, std::string& strPath);
+    std::vector<std::string>    GetFilePaths(const char* szFilename);
+
+    const std::string&          GetResourceDirectoryPath() const { return m_strResourceDirectoryPath; }
+    const std::string&          GetResourceCacheDirectoryPath() const { return m_strResourceCachePath; }
 
     std::list<CResourceFile*>& GetFiles() { return m_ResourceFiles; }
     size_t                     GetFileCount() const noexcept { return m_ResourceFiles.size(); }
@@ -275,7 +271,10 @@ public:
     uint GetScriptID() const noexcept { return m_uiScriptID; }
 
     void OnPlayerJoin(CPlayer& Player);
+    void OnPlayerQuit(CPlayer& Player);
     void SendNoClientCacheScripts(CPlayer* pPlayer = nullptr);
+
+    void OnResourceStateChange(const char* state) noexcept;
 
     CDummy*       GetResourceRootElement() { return m_pResourceElement; }
     const CDummy* GetResourceRootElement() const noexcept { return m_pResourceElement; }
@@ -292,7 +291,7 @@ public:
     bool IsResourceZip() const noexcept { return m_bResourceIsZip; }
     bool UnzipResource();
 
-    ResponseCode HandleRequest(HttpRequest* ipoHttpRequest, HttpResponse* ipoHttpResponse);
+    HttpStatusCode HandleRequest(HttpRequest* ipoHttpRequest, HttpResponse* ipoHttpResponse);
 
     std::list<CResourceFile*>::iterator       IterBegin() { return m_ResourceFiles.begin(); }
     std::list<CResourceFile*>::const_iterator IterBegin() const noexcept { return m_ResourceFiles.begin(); }
@@ -328,6 +327,13 @@ public:
     bool IsUsingDbConnectMysql();
     bool IsFileDbConnectMysqlProtected(const SString& strFilename, bool bReadOnly);
 
+    /**
+     * @brief Searches for a CResourceFile with the given relative path.
+     * @param relativePath Relative resource file path (from meta)
+     * @return A pointer to CResourceFile on success, null otherwise
+     */
+    CResourceFile* GetResourceFile(const SString& relativePath) const;
+
 public:
     static std::list<CResource*> m_StartedResources;
 
@@ -342,7 +348,7 @@ protected:
     void RefreshAutoPermissions(CXMLNode* pNodeAclRequest);
 
     void CommitAclRequest(const SAclRequest& request);
-    bool FindAclRequest(SAclRequest& request);
+    bool FindAclRequest(SAclRequest& result);
 
 private:
     bool CheckState();            // if the resource has no Dependents, stop it, if it has, start it. returns true if the resource is started.
@@ -357,9 +363,10 @@ private:
     bool DestroyVM();
     void TidyUp();
 
-    ResponseCode HandleRequestActive(HttpRequest* ipoHttpRequest, HttpResponse* ipoHttpResponse, CAccount* pAccount);
-    ResponseCode HandleRequestCall(HttpRequest* ipoHttpRequest, HttpResponse* ipoHttpResponse, CAccount* pAccount);
-    bool         IsHttpAccessAllowed(CAccount* pAccount);
+    HttpStatusCode HandleRequestRouter(HttpRequest* request, HttpResponse* response, CAccount* account);
+    HttpStatusCode HandleRequestActive(HttpRequest* ipoHttpRequest, HttpResponse* ipoHttpResponse, CAccount* pAccount);
+    HttpStatusCode HandleRequestCall(HttpRequest* ipoHttpRequest, HttpResponse* ipoHttpResponse, CAccount* pAccount);
+    bool           IsHttpAccessAllowed(CAccount* pAccount);
 
 private:
     EResourceState m_eState = EResourceState::None;
@@ -370,11 +377,10 @@ private:
 
     CResourceManager* m_pResourceManager;
 
-
     SString     m_strResourceName;
-    SString     m_strAbsPath;                      // Absolute path to containing directory        i.e. /server/mods/deathmatch/resources
-    std::string m_strResourceZip;                  // Absolute path to zip file (if a zip)         i.e. m_strAbsPath/resource_name.zip
-    std::string m_strResourceDirectoryPath;        // Absolute path to resource files (if a dir)   i.e. m_strAbsPath/resource_name
+    SString     m_strAbsPath;                          // Absolute path to containing directory        i.e. /server/mods/deathmatch/resources
+    std::string m_strResourceZip;                      // Absolute path to zip file (if a zip)         i.e. m_strAbsPath/resource_name.zip
+    std::string m_strResourceDirectoryPath;            // Absolute path to resource files (if a dir)   i.e. m_strAbsPath/resource_name
     std::string m_strResourceCachePath;            // Absolute path to unzipped cache (if a zip)   i.e. /server/mods/deathmatch/resources/cache/resource_name
 
     unsigned int m_uiVersionMajor = 0;
@@ -393,13 +399,20 @@ private:
     CElementGroup* m_pDefaultElementGroup = nullptr;            // stores elements created by scripts in this resource
     CLuaMain*      m_pVM = nullptr;
 
+    unsigned int                 m_startCounter{};
+    std::unordered_set<CPlayer*> m_isRunningForPlayer;
+
     KeyValueMap                    m_Info;
     std::list<CIncludedResources*> m_IncludedResources;            // we store them here temporarily, then read them once all the resources are loaded
     std::list<CResourceFile*>      m_ResourceFiles;
-    std::list<CResource*>          m_Dependents;                   // resources that have "included" or loaded this one
+    std::map<std::string, int>     m_ResourceFilesCountPerDir;
+    std::list<CResource*>          m_Dependents;            // resources that have "included" or loaded this one
     std::list<CExportedFunction>   m_ExportedFunctions;
     std::list<CResource*>          m_TemporaryIncludes;            // started by startResource script command
 
+    int         m_httpRouterCheck{};
+    std::string m_httpRouterFunction;
+    std::string m_httpRouterAclRight;
     std::string m_strCircularInclude;
     SString     m_strFailureReason;
     unzFile     m_zipfile = nullptr;
@@ -434,8 +447,8 @@ private:
     CMtaVersion m_strMinServerFromMetaXml;              // Min MTA server version as declared in meta.xml
     CMtaVersion m_strMinClientReqFromSource;            // Min MTA client version as calculated by scanning the script source
     CMtaVersion m_strMinServerReqFromSource;            // Min MTA server version as calculated by scanning the script source
-    SString m_strMinClientReason;
-    SString m_strMinServerReason;
+    SString     m_strMinClientReason;
+    SString     m_strMinServerReason;
 
     CChecksum m_metaChecksum;            // Checksum of meta.xml last time this was loaded, generated in GenerateChecksums()
 

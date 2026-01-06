@@ -5,12 +5,13 @@
  *  FILE:        mods/deathmatch/logic/CElementDeleter.h
  *  PURPOSE:     Element lazy deletion manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #pragma once
 
+#include "CElement.h"
 #include <list>
 
 class CElementDeleter

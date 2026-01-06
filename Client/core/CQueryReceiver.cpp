@@ -4,7 +4,7 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        Client/core/CQueryReceiver.cpp
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -162,8 +162,8 @@ SQueryInfo CQueryReceiver::GetServerResponse()
             SString strJoinedPlayers, strMaxPlayers;
             if (strPlayerCount.Split("/", &strJoinedPlayers, &strMaxPlayers))
             {
-                info.players = atoi(strJoinedPlayers);
-                info.playerSlot = atoi(strMaxPlayers);
+                info.players = static_cast<ushort>(atoi(strJoinedPlayers));
+                info.playerSlot = static_cast<ushort>(atoi(strMaxPlayers));
             }
         }
 
@@ -183,14 +183,14 @@ SQueryInfo CQueryReceiver::GetServerResponse()
 
         // Recover server ping status if present
         const SString strPingStatus = strBuildNumber.Right(strBuildNumber.length() - strlen(strBuildNumber) - 1);
-        CCore::GetSingleton().GetNetwork()->UpdatePingStatus(*strPingStatus, info.players);
+        CCore::GetSingleton().GetNetwork()->UpdatePingStatus(strPingStatus.c_str(), strPingStatus.length(), info.players, info.isStatusVerified);
 
         // Recover server http port if present
         const SString strNetRoute = strPingStatus.Right(strPingStatus.length() - strlen(strPingStatus) - 1);
         const SString strUpTime = strNetRoute.Right(strNetRoute.length() - strlen(strNetRoute) - 1);
         const SString strHttpPort = strUpTime.Right(strUpTime.length() - strlen(strUpTime) - 1);
         if (!strHttpPort.empty())
-            info.httpPort = atoi(strHttpPort);
+            info.httpPort = static_cast<ushort>(atoi(strHttpPort));
 
         // Get player nicks
         while (i < len)
@@ -213,7 +213,15 @@ SQueryInfo CQueryReceiver::GetServerResponse()
                 return info;
             }
         }
+
         InvalidateSocket();
+
+        if (info.players > info.playerSlot)
+        {
+            info.players = info.playerSlot;
+            info.isStatusVerified = false;
+        }
+
         info.containingInfo = true;
     }
 

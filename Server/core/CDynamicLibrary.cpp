@@ -5,17 +5,20 @@
  *  FILE:        core/CDynamicLibrary.cpp
  *  PURPOSE:     Dynamic library handling class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
 #include "CDynamicLibrary.h"
 #include "MTAPlatform.h"
+#include "version.h"
 
 #ifdef WIN32
-#include <stdio.h>
+    #include <stdio.h>
 #endif
+
+void Print(const char* szFormat, ...);
 
 CDynamicLibrary::CDynamicLibrary()
 {
@@ -124,12 +127,12 @@ FuncPtr_t CDynamicLibrary::GetProcedureAddress(const char* szProcName)
     if (m_hModule != 0)
     {
         #ifdef WIN32
-        return (FuncPtr_t)GetProcAddress(m_hModule, szProcName);
+        return reinterpret_cast<FuncPtr_t>(static_cast<void*>(GetProcAddress(m_hModule, szProcName)));
         #else
         char* szError = NULL;
         dlerror();
 
-        FuncPtr_t pFunc = (FuncPtr_t)dlsym(m_hModule, szProcName);
+        auto pFunc = reinterpret_cast<FuncPtr_t>(dlsym(m_hModule, szProcName));
         if ((szError = dlerror()) != NULL)
         {
             return NULL;
@@ -145,7 +148,7 @@ FuncPtr_t CDynamicLibrary::GetProcedureAddress(const char* szProcName)
 bool CDynamicLibrary::CheckMtaVersion(const char* szLibName)
 {
 #if MTASA_VERSION_TYPE >= VERSION_TYPE_UNSTABLE
-// define MTASA_SKIP_VERSION_CHECKS in "Shared/build_overrides.h" to skip version checks
+    // define MTASA_SKIP_VERSION_CHECKS in "Shared/build_overrides.h" to skip version checks
 #ifndef MTASA_SKIP_VERSION_CHECKS
 
     if (m_hModule == 0)

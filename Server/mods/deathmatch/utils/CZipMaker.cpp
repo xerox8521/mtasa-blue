@@ -4,11 +4,17 @@
  *  LICENSE:     See LICENSE in the top level directory
  *  FILE:        CZipMaker.cpp
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CZipMaker.h"
+#include <zip.h>
+
+#ifdef WIN32
+    #include <zip/iowin32.h>
+#endif
 
 ///////////////////////////////////////////////////////////////
 //

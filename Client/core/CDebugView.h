@@ -5,7 +5,7 @@
  *  FILE:        core/CDebugView.h
  *  PURPOSE:     Header file for debug view class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
@@ -28,5 +28,5 @@ public:
 
 protected:
     // Debug view doesn't support position changes unlike chat box
-    void UpdatePosition() override {};
+    void UpdatePosition() override{};
 };

@@ -5,11 +5,16 @@
  *  FILE:        mods/deathmatch/logic/CLightsyncManager.h
  *  PURPOSE:     Lightweight synchronization manager class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLightsyncManager.h"
+#include "CPerfStatModule.h"
+#include "CGame.h"
+#include "CBandwidthSettings.h"
+#include "CTickRateSettings.h"
 
 CLightsyncManager::CLightsyncManager()
 {

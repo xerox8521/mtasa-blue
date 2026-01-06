@@ -5,7 +5,7 @@
  *  FILE:        mods/deathmatch/logic/CObject.h
  *  PURPOSE:     Object entity class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 #pragma once
@@ -78,6 +78,12 @@ public:
     bool IsVisibleInAllDimensions() { return m_bVisibleInAllDimensions; };
     void SetVisibleInAllDimensions(bool bVisible) { m_bVisibleInAllDimensions = bVisible; };
 
+    bool IsBreakable() { return m_bBreakable; }
+    void SetBreakable(bool bBreakable) { m_bBreakable = bBreakable; }
+
+    bool IsRespawnEnabled() const noexcept { return m_bRespawnable; }
+    void SetRespawnEnabled(bool bRespawn) noexcept { m_bRespawnable = bRespawn; }
+
 protected:
     bool ReadSpecialData(const int iLine) override;
 
@@ -93,6 +99,9 @@ private:
     bool            m_bSyncable;
     CPlayer*        m_pSyncer;
     bool            m_bVisibleInAllDimensions = false;
+    bool            m_bRespawnable;
+
+    void NotifyMovementComplete();
 
 protected:
     bool m_bCollisionsEnabled;

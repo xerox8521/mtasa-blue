@@ -5,11 +5,15 @@
  *  FILE:        mods/deathmatch/logic/luadefs/CLuaACLDefs.cpp
  *  PURPOSE:     Lua ACL function definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLuaACLDefs.h"
+#include "CGame.h"
+#include "CScriptArgReader.h"
+#include "Utils.h"
 
 // Helper function
 static const char* GetResourceName(lua_State* luaVM)
@@ -53,6 +57,7 @@ void CLuaACLDefs::LoadFunctions()
 
         {"isObjectInACLGroup", isObjectInACLGroup},
         {"hasObjectPermissionTo", hasObjectPermissionTo},
+        {"aclObjectGetGroups", ArgumentParser<aclObjectGetGroups>},
     };
 
     // Add functions
@@ -70,6 +75,7 @@ void CLuaACLDefs::AddClass(lua_State* luaVM)
     lua_classfunction(luaVM, "reload", "aclReload");
     lua_classfunction(luaVM, "list", "aclList");
     lua_classfunction(luaVM, "hasObjectPermissionTo", "hasObjectPermissionTo");
+    lua_classfunction(luaVM, "aclObjectGetGroups", "aclObjectGetGroups");
 
     lua_classfunction(luaVM, "create", "aclCreate");
     lua_classfunction(luaVM, "destroy", "aclDestroy");
@@ -742,6 +748,9 @@ int CLuaACLDefs::aclGroupAddObject(lua_State* luaVM)
     argStream.ReadUserData(pGroup);
     argStream.ReadString(strObject);
 
+    if (strObject.length() > 255)
+        argStream.SetCustomError(SString("Object name is too long, max length 255, got %d.", strObject.length()));
+
     if (!argStream.HasErrors())
     {
         // Figure out what type of object this is
@@ -879,7 +888,7 @@ int CLuaACLDefs::aclGroupRemoveObject(lua_State* luaVM)
 
 int CLuaACLDefs::hasObjectPermissionTo(lua_State* luaVM)
 {
-    //  bool hasObjectPermissionTo ( string / element theObject, string theAction [, bool defaultPermission = true ] )
+    //  bool hasObjectPermissionTo ( string / element theObject, string theAction [, bool defaultPermission = false ] )
     CResource*                                 pResource = NULL;
     CElement*                                  pElement = NULL;
     SString                                    strObject;
@@ -896,7 +905,7 @@ int CLuaACLDefs::hasObjectPermissionTo(lua_State* luaVM)
         argStream.ReadString(strObject);
 
     argStream.ReadString(strRightName);
-    argStream.ReadBool(bDefault, true);
+    argStream.ReadBool(bDefault, false);
 
     if (!argStream.HasErrors())
     {
@@ -1041,4 +1050,34 @@ int CLuaACLDefs::OOP_isObjectInACLGroup(lua_State* luaVM)
 
     lua_pushboolean(luaVM, false);
     return 1;
+}
+
+std::vector<CAccessControlListGroup*> CLuaACLDefs::aclObjectGetGroups(std::string strObject)
+{
+    CAccessControlListGroupObject::EObjectType objectType;
+    const char* szObjectAfterDot = strObject.c_str();
+    if (StringBeginsWith(szObjectAfterDot, "resource."))
+    {
+        szObjectAfterDot += 9;
+        objectType = CAccessControlListGroupObject::OBJECT_TYPE_RESOURCE;
+    }
+    else if (StringBeginsWith(szObjectAfterDot, "user."))
+    {
+        szObjectAfterDot += 5;
+        objectType = CAccessControlListGroupObject::OBJECT_TYPE_USER;
+    }
+    else
+        throw std::invalid_argument("Object must be either a resource or an user.");
+
+    std::vector<CAccessControlListGroup*> groups;
+
+    for (auto iter = m_pACLManager->Groups_Begin();
+        iter != m_pACLManager->Groups_End(); ++iter)
+    {
+        if (!(*iter)->FindObjectMatch(szObjectAfterDot, objectType))
+            continue;
+
+        groups.push_back(*iter);
+    }
+    return groups;
 }

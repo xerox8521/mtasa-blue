@@ -5,11 +5,13 @@
  *  FILE:        mods/deathmatch/logic/luadefs/CLuaTextDefs.cpp
  *  PURPOSE:     Lua text display function definitions class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
 #include "StdInc.h"
+#include "CLuaTextDefs.h"
+#include "CScriptArgReader.h"
 
 void CLuaTextDefs::LoadFunctions()
 {

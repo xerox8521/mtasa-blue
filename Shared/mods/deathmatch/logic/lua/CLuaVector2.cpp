@@ -5,11 +5,14 @@
  *  FILE:        Shared/mods/logic/lua/CLuaVector2.cpp
  *  PURPOSE:     Lua vector2 class
  *
- *  Multi Theft Auto is available from http://www.multitheftauto.com/
+ *  Multi Theft Auto is available from https://www.multitheftauto.com/
  *
  *****************************************************************************/
 
-#include <StdInc.h>
+#include "StdInc.h"
+#include "CLuaVector2.h"
+#include "CVector2D.h"
+#include "CIdArray.h"
 
 CLuaVector2D::CLuaVector2D() : CVector2D()
 {
